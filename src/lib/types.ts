@@ -135,6 +135,16 @@ export interface LedgerEntry {
   taxRate: number;
   taxMode: TaxMode;
   reconciled: boolean;
+  accountCode?: string;
+  counterAccountCode?: string;
+  documentNumber?: string;
+  groupId?: string;
+  cashChange?: number;
+  netAmount?: number;
+  attachmentFileName?: string;
+  attachmentDataUrl?: string;
+  note?: string;
+  manualKind?: "income" | "expense" | "transfer" | "private";
   createdAt: string;
 }
 
