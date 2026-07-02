@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatCurrency, todayIso } from "@/lib/accounting";
-import { detectDocumentType, parseSupplierInvoice, parseZReport, type ParsedInvoice, type ParsedZReport } from "@/lib/document-parser";
+import {
+  detectDocumentType,
+  parseSupplierInvoice,
+  parseZReport,
+  type ParsedInvoice,
+  type ParsedZReport,
+} from "@/lib/document-parser";
+import { readPdfForOcr } from "@/lib/pdf-reader";
 import { useKassenStore } from "@/lib/store";
 import type { PaymentMethod } from "@/lib/types";
 import { Icon } from "../Icon";
 import { Badge, Button, Card, Field, Input, PageHeader, Select } from "../ui";
 
 type Parsed = ParsedZReport | ParsedInvoice;
+
+const MAX_SCAN_BYTES = 20 * 1024 * 1024;
+const MAX_INLINE_ARCHIVE_BYTES = 3 * 1024 * 1024;
 
 export function ScannerPage() {
   const { addScannedZReport, addSupplierInvoice } = useKassenStore();
@@ -22,23 +32,65 @@ export function ScannerPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [pdfInfo, setPdfInfo] = useState("");
 
   const isProcessing = status === "processing";
+  const isPdf = Boolean(file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")));
   const differenceWarning = parsed?.type === "zReport" && parsed.difference && parsed.difference !== 0;
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   function chooseFile(selected?: File) {
     if (!selected) return;
-    if (!selected.type.startsWith("image/")) {
-      setError("Diese Version liest Bilddateien (JPG/PNG/WEBP). PDF-OCR folgt im nächsten Connector-Schritt.");
+    const pdf = selected.type === "application/pdf" || selected.name.toLowerCase().endsWith(".pdf");
+    const image = selected.type.startsWith("image/");
+    if (!pdf && !image) {
+      setError("Bitte eine PDF-, JPG-, PNG- oder WEBP-Datei auswählen.");
       return;
     }
+    if (selected.size > MAX_SCAN_BYTES) {
+      setError("Die Datei ist größer als 20 MB. Bitte die PDF verkleinern oder teilen.");
+      return;
+    }
+
     setError("");
     setFile(selected);
     setPreview(URL.createObjectURL(selected));
     setParsed(undefined);
     setOcrText("");
     setMessage("");
+    setPdfInfo("");
     setProgress(0);
+  }
+
+  async function recognizeSources(sources: Array<File | Blob>) {
+    const { createWorker } = await import("tesseract.js");
+    let activePage = 0;
+    const totalPages = Math.max(sources.length, 1);
+    const worker = await createWorker("deu", 1, {
+      logger: (event) => {
+        if (event.status === "recognizing text") {
+          const totalProgress = (activePage + (event.progress || 0)) / totalPages;
+          setProgress(Math.round(totalProgress * 100));
+        }
+      },
+    });
+
+    try {
+      const parts: string[] = [];
+      for (let index = 0; index < sources.length; index += 1) {
+        activePage = index;
+        const result = await worker.recognize(sources[index]);
+        if (result.data.text.trim()) parts.push(result.data.text.trim());
+      }
+      return parts.join("\n");
+    } finally {
+      await worker.terminate();
+    }
   }
 
   async function scan() {
@@ -46,20 +98,38 @@ export function ScannerPage() {
     setError("");
     setStatus("processing");
     setProgress(0);
+    setPdfInfo("");
+
     try {
-      const { createWorker } = await import("tesseract.js");
-      const worker = await createWorker("deu", 1, {
-        logger: (event) => {
-          if (event.status === "recognizing text") setProgress(Math.round((event.progress || 0) * 100));
-        },
-      });
-      const result = await worker.recognize(file);
-      await worker.terminate();
-      const text = result.data.text;
+      let text = "";
+      if (isPdf) {
+        const pdf = await readPdfForOcr(file);
+        if (pdf.pageImages.length > 0) {
+          const recognized = await recognizeSources(pdf.pageImages);
+          text = [pdf.embeddedText, recognized].filter(Boolean).join("\n");
+          setPdfInfo(
+            `${pdf.processedPages} von ${pdf.pageCount} PDF-Seiten wurden als Bild erkannt.`,
+          );
+        } else {
+          text = pdf.embeddedText;
+          setProgress(100);
+          setPdfInfo(
+            `${pdf.processedPages} von ${pdf.pageCount} PDF-Seiten wurden direkt ausgelesen.`,
+          );
+        }
+      } else {
+        text = await recognizeSources([file]);
+      }
+
+      if (!text.trim()) {
+        throw new Error("In diesem Dokument konnte kein lesbarer Text erkannt werden.");
+      }
+
       setOcrText(text);
       const type = detectDocumentType(text);
       setParsed(type === "zReport" ? parseZReport(text) : parseSupplierInvoice(text));
       setStatus("done");
+      setProgress(100);
     } catch (cause) {
       setStatus("");
       setError(cause instanceof Error ? cause.message : "OCR konnte nicht ausgeführt werden.");
@@ -67,11 +137,18 @@ export function ScannerPage() {
   }
 
   function updateField(key: string, value: string) {
-    setParsed((current) => current ? { ...current, [key]: numericFields.has(key) ? Number(value.replace(",", ".")) || 0 : value } as Parsed : current);
+    setParsed((current) =>
+      current
+        ? ({
+            ...current,
+            [key]: numericFields.has(key) ? Number(value.replace(",", ".")) || 0 : value,
+          } as Parsed)
+        : current,
+    );
   }
 
-  async function imageDataUrl() {
-    if (!file) return undefined;
+  async function originalFileDataUrl() {
+    if (!file || file.size > MAX_INLINE_ARCHIVE_BYTES) return undefined;
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result));
@@ -84,17 +161,45 @@ export function ScannerPage() {
     if (!parsed) return;
     setError("");
     try {
-      const dataUrl = await imageDataUrl();
+      const dataUrl = await originalFileDataUrl();
+      const archiveNote = file && file.size > MAX_INLINE_ARCHIVE_BYTES
+        ? " Die Originaldatei ist für den lokalen Demo-Speicher zu groß; Dateiname und OCR-Text wurden gespeichert."
+        : "";
+
       if (parsed.type === "zReport") {
         addScannedZReport({
-          date: parsed.date || todayIso(), zNumber: parsed.zNumber, gross: parsed.gross || 0, net: parsed.net, vat: parsed.vat,
-          cash: parsed.cash || 0, card: parsed.card || 0, salesCount: parsed.salesCount, difference: parsed.difference,
-          imageDataUrl: dataUrl, fileName: file?.name, ocrText, bookSales,
+          date: parsed.date || todayIso(),
+          zNumber: parsed.zNumber,
+          gross: parsed.gross || 0,
+          net: parsed.net,
+          vat: parsed.vat,
+          cash: parsed.cash || 0,
+          card: parsed.card || 0,
+          salesCount: parsed.salesCount,
+          difference: parsed.difference,
+          imageDataUrl: dataUrl,
+          fileName: file?.name,
+          ocrText,
+          bookSales,
         });
-        setMessage(bookSales ? "Tagesabschluss archiviert und Umsatz gebucht." : "Tagesabschluss archiviert und nur zum Abgleich gespeichert.");
+        setMessage(
+          (bookSales
+            ? "Tagesabschluss archiviert und Umsatz gebucht."
+            : "Tagesabschluss archiviert und nur zum Abgleich gespeichert.") + archiveNote,
+        );
       } else {
-        addSupplierInvoice({ date: parsed.date || todayIso(), vendor: parsed.vendor || "Unbekannter Lieferant", invoiceNumber: parsed.invoiceNumber, gross: parsed.gross || 0, vat: parsed.vat, paymentMethod, imageDataUrl: dataUrl, fileName: file?.name, ocrText });
-        setMessage("Eingangsrechnung als Ausgabe gespeichert.");
+        addSupplierInvoice({
+          date: parsed.date || todayIso(),
+          vendor: parsed.vendor || "Unbekannter Lieferant",
+          invoiceNumber: parsed.invoiceNumber,
+          gross: parsed.gross || 0,
+          vat: parsed.vat,
+          paymentMethod,
+          imageDataUrl: dataUrl,
+          fileName: file?.name,
+          ocrText,
+        });
+        setMessage("Eingangsrechnung als Ausgabe gespeichert." + archiveNote);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Dokument konnte nicht gespeichert werden.");
@@ -102,19 +207,33 @@ export function ScannerPage() {
   }
 
   return <div>
-    <PageHeader title="Beleg scannen" subtitle="Foto hochladen, lokal im Browser auslesen, kontrollieren und mit einem Klick buchen." />
+    <PageHeader title="Beleg scannen" subtitle="PDF oder Foto hochladen, lokal auslesen, kontrollieren und mit einem Klick buchen." />
     {error ? <div className="alert alert-danger">{error}</div> : null}
     {message ? <div className="alert alert-success">{message}</div> : null}
+    {pdfInfo ? <div className="alert alert-success">{pdfInfo}</div> : null}
     <div className="scanner-grid">
       <Card>
-        <label className="dropzone"><input type="file" accept="image/*" capture="environment" onChange={(event) => chooseFile(event.target.files?.[0])} /><span className="dropzone-icon"><Icon name="scan" width={32} height={32} /></span><strong>{file ? file.name : "Beleg fotografieren oder Bild auswählen"}</strong><small>JPG, PNG oder WEBP · Bild bleibt in dieser lokalen Demo im Browser</small></label>
+        <label className="dropzone">
+          <input type="file" accept="application/pdf,.pdf,image/*" onChange={(event) => chooseFile(event.target.files?.[0])} />
+          <span className="dropzone-icon"><Icon name="scan" width={32} height={32} /></span>
+          <strong>{file ? file.name : "PDF, Belegfoto oder Bild auswählen"}</strong>
+          <small>PDF, JPG, PNG oder WEBP · bis 20 MB · Verarbeitung lokal im Browser</small>
+        </label>
         {preview ? (
           <div className="scan-preview">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={preview} alt="Belegvorschau" />
+            {isPdf ? (
+              <object data={preview} type="application/pdf" className="pdf-preview">
+                <a href={preview} target="_blank" rel="noreferrer">PDF öffnen</a>
+              </object>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={preview} alt="Belegvorschau" />
+            )}
           </div>
         ) : null}
-        <Button className="full-button" disabled={!file || isProcessing} onClick={() => void scan()}>{isProcessing ? `Texterkennung ${progress}%` : "Beleg jetzt auslesen"}</Button>
+        <Button className="full-button" disabled={!file || isProcessing} onClick={() => void scan()}>
+          {isProcessing ? `Dokument wird gelesen ${progress}%` : "Beleg jetzt auslesen"}
+        </Button>
         {isProcessing ? <div className="progress"><span style={{ width: `${progress}%` }} /></div> : null}
       </Card>
       <Card>
@@ -138,4 +257,6 @@ function InvoiceForm({ parsed, updateField, paymentMethod, setPaymentMethod }: {
   return <div className="form-grid two"><Field label="Firma"><Input value={parsed.vendor || ""} onChange={(event) => updateField("vendor", event.target.value)} /></Field><Field label="Rechnungsnummer"><Input value={parsed.invoiceNumber || ""} onChange={(event) => updateField("invoiceNumber", event.target.value)} /></Field><Field label="Datum"><Input type="date" value={parsed.date || todayIso()} onChange={(event) => updateField("date", event.target.value)} /></Field><Field label="Zahlungsart"><Select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}><option value="bank">Bank</option><option value="paypal">PayPal</option><option value="cash">Bar</option><option value="card">Karte</option></Select></Field><MoneyField label="Brutto" value={parsed.gross} name="gross" update={updateField} /><MoneyField label="MwSt." value={parsed.vat} name="vat" update={updateField} /></div>;
 }
 
-function MoneyField({ label, value, name, update }: { label: string; value?: number; name: string; update: (key: string, value: string) => void }) { return <Field label={label}><Input type="number" step="0.01" value={value ?? ""} onChange={(event) => update(name, event.target.value)} /></Field>; }
+function MoneyField({ label, value, name, update }: { label: string; value?: number; name: string; update: (key: string, value: string) => void }) {
+  return <Field label={label}><Input type="number" step="0.01" value={value ?? ""} onChange={(event) => update(name, event.target.value)} /></Field>;
+}
