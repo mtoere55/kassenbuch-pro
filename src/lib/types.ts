@@ -14,6 +14,7 @@ export type DocumentType =
   | "zReport"
   | "supplierInvoice";
 export type LedgerDirection = "income" | "expense" | "transfer";
+export type ManualBookingKind = "income" | "expense" | "transfer" | "private";
 export type LedgerSource =
   | "sale"
   | "purchase"
@@ -135,6 +136,16 @@ export interface LedgerEntry {
   taxRate: number;
   taxMode: TaxMode;
   reconciled: boolean;
+  accountCode?: string;
+  counterAccountCode?: string;
+  documentNumber?: string;
+  groupId?: string;
+  cashChange?: number;
+  netAmount?: number;
+  attachmentFileName?: string;
+  attachmentDataUrl?: string;
+  note?: string;
+  manualKind?: ManualBookingKind;
   createdAt: string;
 }
 
