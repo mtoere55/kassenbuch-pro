@@ -63,36 +63,53 @@ export function normalizeDocumentText(value?: string | null): string {
     .trim();
 }
 
-export function supplierInvoiceDuplicateKey(input: SupplierInvoiceFingerprintInput): string {
+function supplierInvoiceFallbackKey(input: SupplierInvoiceFingerprintInput): string {
   const vendor = normalizeDocumentText(input.vendor);
-  const invoiceNumber = normalizeDocumentText(input.invoiceNumber);
-  if (invoiceNumber) return `invoice|${vendor}|${invoiceNumber}`;
-
   const amountCents = Math.round(input.gross * 100);
   const fileName = normalizeDocumentText(input.fileName);
   return `fallback|${vendor}|${input.date}|${amountCents}|${fileName}`;
 }
 
-export function supplierInvoiceKeyFromDocument(document: BusinessDocument): string | undefined {
+export function supplierInvoiceDuplicateKey(input: SupplierInvoiceFingerprintInput): string {
+  const vendor = normalizeDocumentText(input.vendor);
+  const invoiceNumber = normalizeDocumentText(input.invoiceNumber);
+  if (invoiceNumber) return `invoice|${vendor}|${invoiceNumber}`;
+  return supplierInvoiceFallbackKey(input);
+}
+
+function invoiceInputFromDocument(document: BusinessDocument): SupplierInvoiceFingerprintInput | undefined {
   if (document.type !== "supplierInvoice") return undefined;
   const vendor = String(document.metadata?.vendor || "");
   const storedInvoiceNumber = String(document.metadata?.invoiceNumber || "");
   const generatedNumber = /^ER-\d{4}-\d+$/i.test(document.documentNumber);
-  return supplierInvoiceDuplicateKey({
+  return {
     vendor,
     date: document.date,
     gross: document.amount,
     invoiceNumber: storedInvoiceNumber || (generatedNumber ? undefined : document.documentNumber),
     fileName: document.originalFileName,
-  });
+  };
+}
+
+export function supplierInvoiceKeyFromDocument(document: BusinessDocument): string | undefined {
+  const input = invoiceInputFromDocument(document);
+  return input ? supplierInvoiceDuplicateKey(input) : undefined;
 }
 
 export function findSupplierInvoiceDuplicate(
   documents: BusinessDocument[],
   input: SupplierInvoiceFingerprintInput,
 ): BusinessDocument | undefined {
-  const key = supplierInvoiceDuplicateKey(input);
-  return documents.find((document) => supplierInvoiceKeyFromDocument(document) === key);
+  const primaryKey = supplierInvoiceDuplicateKey(input);
+  const fallbackKey = supplierInvoiceFallbackKey(input);
+  return documents.find((document) => {
+    const existing = invoiceInputFromDocument(document);
+    if (!existing) return false;
+    return (
+      supplierInvoiceDuplicateKey(existing) === primaryKey ||
+      supplierInvoiceFallbackKey(existing) === fallbackKey
+    );
+  });
 }
 
 export function inferSupplierAccount(vendor: string, ocrText: string): BookkeepingAccount {
