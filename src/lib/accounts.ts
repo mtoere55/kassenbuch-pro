@@ -17,7 +17,7 @@ export const BOOKING_CATEGORIES: BookingCategory[] = [
   { code: "4980", label: "Sonstiger Betriebsbedarf", side: "out", vat: 19 },
   { code: "8336", label: "Erlöse Differenzbesteuerung", side: "in", vat: 0 },
   { code: "8400", label: "Erlöse 19 %", side: "in", vat: 19 },
-  { code: "8600", label: "Steuerfreie Erlöse", side: "in", vat: 0 }
+  { code: "8600", label: "Steuerfreie Erlöse", side: "in", vat: 0 },
 ];
 
 export function getBookingCategory(code?: string) {
