@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./document-preview.css";
 
 export const metadata: Metadata = {
   title: "Kassenbuch Pro",
