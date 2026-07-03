@@ -12,9 +12,10 @@ import {
   isTradeBooking,
   parseMoney,
   type BookingDraft,
+  type ManualBookingKind,
 } from "@/lib/manual-booking";
 import { useKassenStore } from "@/lib/store";
-import type { BusinessDocument, LedgerEntry, ManualBookingKind } from "@/lib/types";
+import type { BusinessDocument, LedgerEntry } from "@/lib/types";
 import { Button, Field, Input, Modal, Select } from "../ui";
 
 interface Props {
