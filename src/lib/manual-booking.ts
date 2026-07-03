@@ -1,5 +1,7 @@
 import { getTaxAmountFromGross, todayIso } from "./accounting";
-import type { LedgerEntry, ManualBookingKind, PaymentMethod } from "./types";
+import type { LedgerEntry, PaymentMethod } from "./types";
+
+export type ManualBookingKind = "income" | "expense" | "transfer" | "private";
 
 export interface SplitLine {
   accountCode: string;
