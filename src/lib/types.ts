@@ -20,6 +20,7 @@ export type LedgerSource =
   | "scan"
   | "bankImport"
   | "paypalImport"
+  | "kasImport"
   | "manual";
 
 export interface Customer {
