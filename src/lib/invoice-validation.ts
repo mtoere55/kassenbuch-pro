@@ -2,6 +2,7 @@ export interface ValidatedInvoiceAmounts {
   gross: number;
   vat: number;
   net: number;
+  vatRate: 0 | 7 | 19;
 }
 
 const STANDARD_VAT_RATE = 19;
@@ -47,7 +48,15 @@ export function validateSupplierInvoiceAmounts(
     gross,
     vat,
     net: roundMoney(gross - vat),
+    vatRate: inferGermanVatRate(gross, vat),
   };
+}
+
+export function inferGermanVatRate(gross: number, vat: number): 0 | 7 | 19 {
+  if (!vat || gross <= 0) return 0;
+  const vatAt7 = roundMoney((gross * 7) / 107);
+  const vatAt19 = roundMoney((gross * 19) / 119);
+  return Math.abs(vat - vatAt7) <= Math.abs(vat - vatAt19) ? 7 : 19;
 }
 
 export function roundMoney(value: number): number {
