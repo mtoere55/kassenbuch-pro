@@ -17,6 +17,20 @@ export function KasEntryReviewModal({
   onClose,
   onSaved,
 }: {
+  entry?: LedgerEntry;
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  return entry ? (
+    <KasEntryReviewForm key={entry.id} entry={entry} onClose={onClose} onSaved={onSaved} />
+  ) : null;
+}
+
+function KasEntryReviewForm({
+  entry,
+  onClose,
+  onSaved,
+}: {
   entry: LedgerEntry;
   onClose: () => void;
   onSaved: (message: string) => void;
