@@ -1,13 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { migrateKasImportSources } from "@/lib/kas-review";
+import { useKassenStore } from "@/lib/store";
 import { Button } from "../ui";
 import { KasImportModal } from "./KasImportModal";
 import { LedgerPage } from "./LedgerPage";
 
 export function LedgerImportPage() {
+  const { state, replaceState } = useKassenStore();
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    const migrated = migrateKasImportSources(state);
+    if (migrated !== state) replaceState(migrated);
+  }, [replaceState, state]);
 
   return <>
     <div className="booking-shortcuts">

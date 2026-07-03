@@ -38,7 +38,12 @@ export function KasImportModal({ open, onClose, onImported }: {
   function importEntries() {
     if (!plan?.entries.length) return;
     replaceState({ ...state, ledger: [...plan.entries, ...state.ledger] });
-    onImported(`${plan.entries.length} Buchungen aus ${fileName} wurden importiert.`);
+    const details = [
+      `${plan.entries.length} Buchungen aus ${fileName} wurden importiert.`,
+      plan.duplicateCount ? `${plan.duplicateCount} bereits vorhandene Datensätze wurden übersprungen.` : "",
+      plan.zeroAmountCount ? `${plan.zeroAmountCount} Nullbuchungen wurden nicht übernommen.` : "",
+    ].filter(Boolean).join(" ");
+    onImported(details);
     setParsed(undefined);
     setFileName("");
     onClose();
@@ -71,8 +76,8 @@ export function KasImportModal({ open, onClose, onImported }: {
           <div><dt>Konten erkannt</dt><dd>{parsed.accounts.length}</dd></div>
           <div><dt>Nicht zugeordnet</dt><dd>{parsed.unknownAccountRecords}</dd></div>
         </dl>
-        {parsed.unknownAccountRecords ? <div className="alert alert-warning">{parsed.unknownAccountRecords} Buchungen werden als Konto 0000 „Nicht zugeordnet“ übernommen, damit kein Betrag verloren geht.</div> : null}
-        <div className="table-wrap"><table className="data-table"><thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th className="align-right">Betrag</th></tr></thead><tbody>{parsed.transactions.slice(0, 20).map((item) => <tr key={item.sourceId}><td>{formatDate(item.date)}</td><td><strong>{item.description || item.accountLabel}</strong><small>KAS {item.recordId}</small></td><td>{item.accountCode || "0000"}<small>{item.accountLabel}</small></td><td className="align-right"><strong>{item.cashChange >= 0 ? "+" : "−"}{formatCurrency(item.amount)}</strong></td></tr>)}</tbody></table></div>
+        {parsed.unknownAccountRecords ? <div className="alert alert-warning">{parsed.unknownAccountRecords} Buchungen werden als Konto 0000 „Nicht zugeordnet“ übernommen. Diese Buchungen können danach einzeln geprüft und einem Konto zugeordnet werden.</div> : null}
+        <div className="table-wrap"><table className="data-table"><thead><tr><th>Datum</th><th>Text</th><th>Konto</th><th className="align-right">Betrag</th></tr></thead><tbody>{parsed.transactions.slice(0, 20).map((item) => <tr key={item.sourceId}><td>{formatDate(item.date)}</td><td><strong>{item.description || item.accountLabel}</strong><small>KAS {item.recordId}</small></td><td>{item.accountCode || "0000"}<small>{item.accountLabel}</small></td><td className="align-right"><strong>{item.direction === "expense" ? "−" : item.direction === "income" ? "+" : ""}{formatCurrency(item.amount)}</strong></td></tr>)}</tbody></table></div>
       </> : null}
     </div>
   </Modal>;
