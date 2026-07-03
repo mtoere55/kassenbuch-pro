@@ -10,7 +10,7 @@ import { CustomersPage } from "./pages/CustomersPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DevicesPage } from "./pages/DevicesPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
-import { LedgerPage } from "./pages/LedgerPage";
+import { LedgerImportPage } from "./pages/LedgerImportPage";
 import { PurchasePage } from "./pages/PurchasePage";
 import { SalePage } from "./pages/SalePage";
 import { ScannerPage } from "./pages/ScannerPage";
@@ -68,7 +68,7 @@ function renderPage(page: PageKey, navigate: (page: PageKey) => void) {
     case "customers": return <CustomersPage />;
     case "devices": return <DevicesPage />;
     case "documents": return <DocumentsPage />;
-    case "ledger": return <LedgerPage />;
+    case "ledger": return <LedgerImportPage />;
     case "accounts": return <AccountsPage />;
     case "settings": return <SettingsPage />;
   }
