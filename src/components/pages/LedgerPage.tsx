@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { BOOKING_CATEGORIES, getBookingCategory } from "@/lib/accounts";
 import { formatCurrency, formatDate, todayIso } from "@/lib/accounting";
-import { createBookingDraft, entryCashEffect, type BookingDraft } from "@/lib/manual-booking";
+import { createBookingDraft, entryCashEffect, type BookingDraft, type ManualBookingKind } from "@/lib/manual-booking";
 import { useKassenStore } from "@/lib/store";
-import type { LedgerDirection, ManualBookingKind, PaymentMethod } from "@/lib/types";
+import type { LedgerDirection, PaymentMethod } from "@/lib/types";
 import { Icon } from "../Icon";
 import { Badge, Button, Card, EmptyState, Input, PageHeader, Select, StatCard } from "../ui";
 import { ManualBookingModal } from "./ManualBookingModal";
@@ -22,21 +22,13 @@ export function LedgerPage() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<BookingDraft>(() => createBookingDraft());
   const [notice, setNotice] = useState("");
-
   const start = `${month}-01`;
   const [year, monthNumber] = month.split("-").map(Number);
   const end = new Date(Date.UTC(year, monthNumber, 1)).toISOString().slice(0, 10);
   const sorted = useMemo(() => [...state.ledger].sort((left, right) => `${left.date}|${left.createdAt}`.localeCompare(`${right.date}|${right.createdAt}`)), [state.ledger]);
   const opening = state.settings.openingCash + sorted.filter((entry) => entry.date < start).reduce((sum, entry) => sum + entryCashEffect(entry), 0);
-  const monthRows = sorted.filter((entry) => entry.date >= start && entry.date < end).reduce<Array<{ entry: typeof sorted[number]; balance: number }>>((rows, entry) => {
-    const previous = rows.length ? rows[rows.length - 1].balance : opening;
-    rows.push({ entry, balance: previous + entryCashEffect(entry) });
-    return rows;
-  }, []);
-  const rows = monthRows.filter(({ entry }) => {
-    const searchable = `${entry.description} ${entry.category} ${entry.accountCode || ""} ${entry.documentNumber || ""}`.toLowerCase();
-    return (payment === "all" || entry.paymentMethod === payment) && (direction === "all" || entry.direction === direction) && (!query || searchable.includes(query.toLowerCase()));
-  });
+  const monthRows = sorted.filter((entry) => entry.date >= start && entry.date < end).reduce<Array<{ entry: typeof sorted[number]; balance: number }>>((rows, entry) => { const previous = rows.length ? rows[rows.length - 1].balance : opening; rows.push({ entry, balance: previous + entryCashEffect(entry) }); return rows; }, []);
+  const rows = monthRows.filter(({ entry }) => { const searchable = `${entry.description} ${entry.category} ${entry.accountCode || ""} ${entry.documentNumber || ""}`.toLowerCase(); return (payment === "all" || entry.paymentMethod === payment) && (direction === "all" || entry.direction === direction) && (!query || searchable.includes(query.toLowerCase())); });
   const entries = rows.map((row) => row.entry);
   const income = total(entries, "income");
   const expense = total(entries, "expense");
@@ -44,11 +36,7 @@ export function LedgerPage() {
   const inputTax = entries.filter((entry) => entry.direction === "expense").reduce((sum, entry) => sum + entry.taxAmount, 0);
   const ending = opening + monthRows.reduce((sum, row) => sum + entryCashEffect(row.entry), 0);
 
-  function startBooking(kind: ManualBookingKind) {
-    setDraft(createBookingDraft(kind));
-    setNotice("");
-    setOpen(true);
-  }
+  function startBooking(kind: ManualBookingKind) { setDraft(createBookingDraft(kind)); setNotice(""); setOpen(true); }
 
   return <div>
     <PageHeader title="Kassenbuch" subtitle="Monatliches Kassenkonto mit laufendem Saldo, Quittung, Split, Privatvorgang und Umbuchung." actions={<Button icon="plus" onClick={() => startBooking("income")}>Neue Buchung</Button>} />
