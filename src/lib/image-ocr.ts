@@ -10,6 +10,7 @@ const TARGET_WIDTH = 1800;
 const MAX_SCALE = 3;
 const TILE_HEIGHT = 1900;
 const TILE_OVERLAP = 180;
+const ARCHIVE_MAX_SIDE = 1800;
 
 export async function prepareImageForOcr(file: File): Promise<PreparedImageOcr> {
   const bitmap = await createImageBitmap(file);
@@ -44,6 +45,28 @@ export async function prepareImageForOcr(file: File): Promise<PreparedImageOcr> 
         ? `Langer Beleg erkannt: Das Bild wurde vergrößert und in ${sources.length} überlappende Abschnitte geteilt.`
         : "Das Belegbild wurde vergrößert sowie für Thermodruck und schwachen Kontrast optimiert.",
     };
+  } finally {
+    bitmap.close();
+  }
+}
+
+export async function createArchiveImageDataUrl(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const ratio = Math.min(1, ARCHIVE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * ratio));
+    const height = Math.max(1, Math.round(bitmap.height * ratio));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("Das Belegbild konnte nicht archiviert werden.");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(bitmap, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.82);
   } finally {
     bitmap.close();
   }

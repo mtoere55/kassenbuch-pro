@@ -20,7 +20,8 @@ import {
   type ParsedInvoice,
   type ParsedZReport,
 } from "@/lib/document-parser";
-import { prepareImageForOcr } from "@/lib/image-ocr";
+import { createArchiveImageDataUrl, prepareImageForOcr } from "@/lib/image-ocr";
+import { validateSupplierInvoiceAmounts } from "@/lib/invoice-validation";
 import { readPdfForOcr } from "@/lib/pdf-reader";
 import { useKassenStore } from "@/lib/store";
 import type { BusinessDocument, LedgerEntry, PaymentMethod } from "@/lib/types";
@@ -164,7 +165,11 @@ export function useScannerController() {
   }
 
   async function originalFileDataUrl() {
-    if (!file || file.size > MAX_INLINE_ARCHIVE_BYTES) return undefined;
+    if (!file) return undefined;
+    if (file.type.startsWith("image/")) {
+      return createArchiveImageDataUrl(file);
+    }
+    if (file.size > MAX_INLINE_ARCHIVE_BYTES) return undefined;
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result));
@@ -177,12 +182,13 @@ export function useScannerController() {
     const date = invoice.date || todayIso();
     const vendor = invoice.vendor?.trim() || "Unbekannter Lieferant";
     const gross = invoice.gross || 0;
-    if (gross <= 0) throw new Error("Bitte den Rechnungsbetrag prüfen.");
+    const taxCandidate = invoice.vat ?? getTaxAmountFromGross(gross);
+    const amounts = validateSupplierInvoiceAmounts(gross, taxCandidate);
 
     const duplicate = findSupplierInvoiceDuplicate(state.documents, {
       vendor,
       date,
-      gross,
+      gross: amounts.gross,
       invoiceNumber: invoice.invoiceNumber,
       fileName: file?.name,
     });
@@ -197,12 +203,11 @@ export function useScannerController() {
       state.documents.map((document) => document.documentNumber),
       new Date(`${date}T12:00:00`),
     );
-    const taxAmount = invoice.vat ?? getTaxAmountFromGross(gross);
     const account = getSupplierAccount(accountCode);
     const duplicateKey = supplierInvoiceDuplicateKey({
       vendor,
       date,
-      gross,
+      gross: amounts.gross,
       invoiceNumber: invoice.invoiceNumber,
       fileName: file?.name,
     });
@@ -212,9 +217,9 @@ export function useScannerController() {
       documentNumber,
       type: "supplierInvoice",
       date,
-      amount: gross,
-      taxAmount,
-      taxMode: taxAmount > 0 ? "standard19" : "taxFree",
+      amount: amounts.gross,
+      taxAmount: amounts.vat,
+      taxMode: amounts.vat > 0 ? "standard19" : "taxFree",
       paymentMethod,
       status: invoicePaid ? "paid" : "open",
       originalFileName: file?.name,
@@ -236,22 +241,22 @@ export function useScannerController() {
       id: makeId("ledger"),
       date,
       direction: "expense",
-      amount: gross,
+      amount: amounts.gross,
       paymentMethod,
       description: `Eingangsrechnung ${vendor}`,
       category: `${account.code} · ${account.label}`,
       source: "scan",
       sourceId: documentId,
       documentId,
-      taxAmount,
-      taxRate: taxAmount > 0 ? 19 : 0,
-      taxMode: taxAmount > 0 ? "standard19" : "taxFree",
+      taxAmount: amounts.vat,
+      taxRate: amounts.vat > 0 ? 19 : 0,
+      taxMode: amounts.vat > 0 ? "standard19" : "taxFree",
       reconciled: invoicePaid && (paymentMethod === "cash" || paymentMethod === "card"),
       accountCode: account.code,
       counterAccountCode: paymentAccount,
       documentNumber,
-      cashChange: paymentMethod === "cash" && invoicePaid ? -gross : 0,
-      netAmount: Math.round((gross - taxAmount) * 100) / 100,
+      cashChange: paymentMethod === "cash" && invoicePaid ? -amounts.gross : 0,
+      netAmount: amounts.net,
       attachmentFileName: file?.name,
       attachmentDataUrl: dataUrl,
       createdAt,
@@ -269,7 +274,7 @@ export function useScannerController() {
     setError("");
     try {
       const dataUrl = await originalFileDataUrl();
-      const archiveNote = file && file.size > MAX_INLINE_ARCHIVE_BYTES
+      const archiveNote = file && !dataUrl
         ? " Die Originaldatei ist für den lokalen Demo-Speicher zu groß; Dateiname und OCR-Text wurden gespeichert."
         : "";
 
@@ -357,7 +362,11 @@ function getIncompleteWarning(parsed: ParsedScan): string {
       ? "Die Umsatzwerte wurden nicht sicher erkannt. Bitte Dokumenttyp prüfen und Brutto, Bar sowie Karte manuell kontrollieren."
       : "";
   }
-  return !parsed.gross
-    ? "Der Rechnungsbetrag wurde nicht sicher erkannt. Bitte Brutto und MwSt. vor dem Speichern manuell eintragen."
-    : "";
+  if (!parsed.gross) {
+    return "Der Rechnungsbetrag wurde nicht sicher erkannt. Bitte Brutto und MwSt. vor dem Speichern manuell eintragen.";
+  }
+  if (parsed.vat && parsed.vat >= parsed.gross) {
+    return "Die erkannte MwSt. ist offensichtlich falsch. Bitte den Steuerbetrag vor dem Speichern korrigieren.";
+  }
+  return "";
 }
