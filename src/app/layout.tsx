@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./document-preview.css";
+import "./cashbook.css";
 
 export const metadata: Metadata = {
   title: "Kassenbuch Pro",
@@ -16,7 +17,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="de">
+    <html lang="de">">
       <body>{children}</body>
     </html>
   );
