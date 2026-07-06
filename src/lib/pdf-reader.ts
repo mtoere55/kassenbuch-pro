@@ -5,16 +5,18 @@ export interface PdfReadResult {
   processedPages: number;
 }
 
+export interface PdfLayoutReadResult {
+  pageTexts: string[];
+  text: string;
+  pageCount: number;
+  processedPages: number;
+}
+
 const MAX_PDF_PAGES = 10;
 const MIN_EMBEDDED_TEXT_LENGTH = 80;
 
 export async function readPdfForOcr(file: File): Promise<PdfReadResult> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/legacy/build/pdf.worker.mjs",
-    import.meta.url,
-  ).toString();
-
+  const pdfjs = await loadPdfJs();
   const bytes = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjs.getDocument({ data: bytes }).promise;
   const processedPages = Math.min(pdf.numPages, MAX_PDF_PAGES);
@@ -63,4 +65,60 @@ export async function readPdfForOcr(file: File): Promise<PdfReadResult> {
     pageCount: pdf.numPages,
     processedPages,
   };
+}
+
+export async function readPdfWithLayout(file: File): Promise<PdfLayoutReadResult> {
+  const pdfjs = await loadPdfJs();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+  const processedPages = Math.min(pdf.numPages, MAX_PDF_PAGES);
+  const pageTexts: string[] = [];
+
+  for (let pageNumber = 1; pageNumber <= processedPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const positioned = content.items
+      .filter((item): item is typeof item & { str: string; transform: number[] } =>
+        "str" in item && "transform" in item && Boolean(item.str.trim()),
+      )
+      .map((item) => ({
+        text: item.str.trim(),
+        x: Number(item.transform[4] || 0),
+        y: Number(item.transform[5] || 0),
+      }))
+      .sort((left, right) => right.y - left.y || left.x - right.x);
+
+    const rows: Array<{ y: number; items: Array<{ text: string; x: number }> }> = [];
+    for (const item of positioned) {
+      const row = rows.find((candidate) => Math.abs(candidate.y - item.y) <= 1.75);
+      if (row) {
+        row.items.push({ text: item.text, x: item.x });
+      } else {
+        rows.push({ y: item.y, items: [{ text: item.text, x: item.x }] });
+      }
+    }
+
+    const pageText = rows
+      .sort((left, right) => right.y - left.y)
+      .map((row) => row.items.sort((left, right) => left.x - right.x).map((item) => item.text).join(" "))
+      .join("\n")
+      .trim();
+    pageTexts.push(pageText);
+  }
+
+  return {
+    pageTexts,
+    text: pageTexts.join("\n\f\n"),
+    pageCount: pdf.numPages,
+    processedPages,
+  };
+}
+
+async function loadPdfJs() {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/legacy/build/pdf.worker.mjs",
+    import.meta.url,
+  ).toString();
+  return pdfjs;
 }
