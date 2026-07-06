@@ -29,6 +29,7 @@ export type ImportedTransactionType =
   | "bankWithdrawal"
   | "fee"
   | "other";
+export type BookkeepingStatus = "unbooked" | "booked" | "reviewed";
 
 export interface Customer {
   id: string;
@@ -176,6 +177,9 @@ export interface ImportedTransaction {
   invoiceNumber?: string;
   matchedDocumentId?: string;
   matchedLedgerEntryId?: string;
+  feeLedgerEntryId?: string;
+  suggestedAccountCode?: string;
+  bookkeepingStatus?: BookkeepingStatus;
   matchConfidence: number;
   status: "new" | "matched" | "ignored" | "needsReview";
   createdAt: string;
