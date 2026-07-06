@@ -24,7 +24,7 @@ SB-EINZAHLUNG HGS HA KH
 MURAT TOERE Gehalt
 30.04.2026 Abrechnung 30.04.2026 / Wert: 01.05.2026 -42,30
 siehe Anlage Nr. 1
-Kontostand am 30.04.2026 um 20:05 Uhr 371,77
+Kontostand am 30.04.2026 um 20:05 Uhr 371,47
 Rechnungsabschluss:
 Rechnungsnummer: 20260430-WL081-00029606639`;
 
@@ -38,7 +38,7 @@ describe("Sparkasse bank statement PDF", () => {
       periodStart: "2026-04-01",
       periodEnd: "2026-04-30",
       openingBalance: 2372.11,
-      closingBalance: 371.77,
+      closingBalance: 371.47,
     });
     expect(report.transactions).toHaveLength(7);
     expect(report.transactions.map((item) => item.classification)).toEqual([
