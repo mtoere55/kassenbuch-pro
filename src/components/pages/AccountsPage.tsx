@@ -13,6 +13,7 @@ import { reconcileImportedState } from "@/lib/transaction-reconciliation";
 import type { BusinessDocument, ImportedTransaction, ImportedTransactionType } from "@/lib/types";
 import { Icon } from "../Icon";
 import { Badge, Button, Card, EmptyState, PageHeader, StatCard } from "../ui";
+import { FlatpayReportImportModal } from "./FlatpayReportImportModal";
 import { PayPalTransactionReviewModal } from "./PayPalTransactionReviewModal";
 
 export function AccountsPage() {
@@ -20,6 +21,7 @@ export function AccountsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string>();
+  const [flatpayOpen, setFlatpayOpen] = useState(false);
   const bankInput = useRef<HTMLInputElement>(null);
   const paypalInput = useRef<HTMLInputElement>(null);
   const selectedTransaction = state.importedTransactions.find((item) => item.id === selectedId);
@@ -88,6 +90,7 @@ export function AccountsPage() {
   ).length;
   const paypalReviewed = paypal.filter((item) => item.bookkeepingStatus === "reviewed").length;
   const paypalFees = paypal.reduce((sum, item) => sum + (item.feeAmount || 0), 0);
+  const flatpayReports = state.documents.filter((document) => document.type === "salesReport");
   const sortedTransactions = useMemo(
     () =>
       [...state.importedTransactions].sort((left, right) =>
@@ -98,8 +101,8 @@ export function AccountsPage() {
 
   return <div>
     <PageHeader
-      title="Bank & PayPal"
-      subtitle="Kontobewegungen importieren, mit Rechnungen abgleichen und sicher in die Buchhaltung übernehmen."
+      title="Bank, PayPal & Flatpay"
+      subtitle="Kontobewegungen und Umsatzberichte importieren, abgleichen und sicher in die Buchhaltung übernehmen."
       actions={<div className="document-actions"><Button variant="secondary" onClick={reconcile}>Automatisch abgleichen</Button><Button onClick={prepareBookkeeping}>PayPal-Buchhaltung erstellen</Button></div>}
     />
     {message ? <div className="alert alert-success">{message}</div> : null}
@@ -124,6 +127,15 @@ export function AccountsPage() {
         </div>
         <Button variant="secondary" icon="upload" onClick={() => paypalInput.current?.click()}>PayPal-CSV importieren</Button>
         <input ref={paypalInput} type="file" accept=".csv,text/csv" hidden onChange={(event) => void handleFile(event.target.files?.[0], "paypal")} />
+      </Card>
+      <Card className="account-card">
+        <div className="account-logo bank">F</div>
+        <div>
+          <h2>Flatpay Umsatzbericht</h2>
+          <p>PDF automatisch auslesen, Summen prüfen, vorhandene Buchungen abgleichen und nur fehlende Umsätze ergänzen.</p>
+          <div className="account-meta"><Badge tone="info">{flatpayReports.length} Berichte</Badge><Badge tone="success">PDF-Abgleich</Badge></div>
+        </div>
+        <Button variant="secondary" icon="upload" onClick={() => setFlatpayOpen(true)}>Flatpay-PDF importieren</Button>
       </Card>
     </div>
     {paypalCount ? <div className="stat-grid">
@@ -152,8 +164,9 @@ export function AccountsPage() {
         </div>
       )}
     </Card>
-    <div className="alert alert-info">PayPal-Zahlungen werden zunächst mit 0 % Steuer gebucht. Vorsteuer wird erst nach Prüfung der echten Lieferantenrechnung bestätigt. Bank → PayPal und PayPal → Bank bleiben reine Umbuchungen.</div>
+    <div className="alert alert-info">PayPal-Zahlungen werden zunächst mit 0 % Steuer gebucht. Flatpay-PDFs werden intern geprüft und mit vorhandenen Erlösen verglichen; übereinstimmende Werte werden nicht doppelt gebucht.</div>
     <PayPalTransactionReviewModal transaction={selectedTransaction} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
+    <FlatpayReportImportModal open={flatpayOpen} onClose={() => setFlatpayOpen(false)} onImported={setMessage} />
   </div>;
 }
 
@@ -204,5 +217,6 @@ function documentTypeLabel(document: BusinessDocument) {
     purchaseContract: "Ankaufvertrag",
     supplierInvoice: "Eingangsrechnung",
     zReport: "Tagesabschluss",
+    salesReport: "Umsatzbericht",
   } as const)[document.type];
 }
