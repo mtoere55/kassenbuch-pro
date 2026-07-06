@@ -3,18 +3,26 @@
 import { useMemo, useRef, useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/accounting";
 import { parseTransactionsCsv, summarizeImportedTransactions } from "@/lib/csv";
+import {
+  isInternalTransfer,
+  payPalBookkeepingStatusLabel,
+  preparePayPalBookkeeping,
+} from "@/lib/paypal-bookkeeping";
 import { useKassenStore } from "@/lib/store";
 import { reconcileImportedState } from "@/lib/transaction-reconciliation";
 import type { BusinessDocument, ImportedTransaction, ImportedTransactionType } from "@/lib/types";
 import { Icon } from "../Icon";
 import { Badge, Button, Card, EmptyState, PageHeader, StatCard } from "../ui";
+import { PayPalTransactionReviewModal } from "./PayPalTransactionReviewModal";
 
 export function AccountsPage() {
   const { state, importTransactions, replaceState } = useKassenStore();
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState<string>();
   const bankInput = useRef<HTMLInputElement>(null);
   const paypalInput = useRef<HTMLInputElement>(null);
+  const selectedTransaction = state.importedTransactions.find((item) => item.id === selectedId);
 
   async function handleFile(file: File | undefined, type: "bank" | "paypal") {
     if (!file) return;
@@ -30,7 +38,7 @@ export function AccountsPage() {
         setMessage(
           `${summary.total} PayPal-Zeilen erkannt, ${added} neu importiert. ` +
             `${summary.paypalPayments} Zahlungen, ${summary.paypalRefunds} Rückzahlungen und ` +
-            `${summary.internalTransfers} interne Bankbewegungen.`,
+            `${summary.internalTransfers} interne Bankbewegungen. Danach „PayPal-Buchhaltung erstellen“ ausführen.`,
         );
       } else {
         setMessage(`${added} neue Bank-Umsätze importiert.`);
@@ -51,23 +59,48 @@ export function AccountsPage() {
     );
   }
 
+  function prepareBookkeeping() {
+    const paypalCount = state.importedTransactions.filter((item) => item.accountType === "paypal").length;
+    if (!paypalCount) {
+      setError("Bitte zuerst einen PayPal-Aktivitätsbericht als CSV importieren.");
+      return;
+    }
+    const result = preparePayPalBookkeeping(state);
+    replaceState(result.state);
+    setError("");
+    setMessage(
+      `${result.createdEntries} Buchung(en) wurden erstellt, ${result.linkedEntries} vorhandene Belegbuchung(en) verbunden und ` +
+        `${result.transferEntries} interne Umbuchung(en) erkannt. ${result.reviewCount} Zahlung(en) müssen noch anhand der Rechnung geprüft werden.` +
+        (result.feeEntries ? ` ${result.feeEntries} PayPal-Gebühr(en) wurden auf 4970 gebucht.` : ""),
+    );
+  }
+
   const bankCount = state.importedTransactions.filter((item) => item.accountType === "bank").length;
   const paypal = state.importedTransactions.filter((item) => item.accountType === "paypal");
   const paypalCount = paypal.length;
   const paypalInternal = paypal.filter(isInternalTransfer).length;
   const paypalMatched = paypal.filter((item) => item.status === "matched").length;
-  const paypalReview = paypal.filter((item) => item.status === "needsReview" || item.status === "new").length;
+  const paypalReview = paypal.filter(
+    (item) => item.bookkeepingStatus === "booked" || item.status === "needsReview" || item.status === "new",
+  ).length;
+  const paypalBooked = paypal.filter(
+    (item) => item.bookkeepingStatus === "booked" || item.bookkeepingStatus === "reviewed",
+  ).length;
+  const paypalReviewed = paypal.filter((item) => item.bookkeepingStatus === "reviewed").length;
   const paypalFees = paypal.reduce((sum, item) => sum + (item.feeAmount || 0), 0);
   const sortedTransactions = useMemo(
-    () => [...state.importedTransactions].sort((left, right) => `${right.date}|${right.time || ""}`.localeCompare(`${left.date}|${left.time || ""}`)),
+    () =>
+      [...state.importedTransactions].sort((left, right) =>
+        `${right.date}|${right.time || ""}`.localeCompare(`${left.date}|${left.time || ""}`),
+      ),
     [state.importedTransactions],
   );
 
   return <div>
     <PageHeader
       title="Bank & PayPal"
-      subtitle="Kontobewegungen importieren, sicher mit Rechnungen abgleichen und Doppelimporte verhindern."
-      actions={<Button onClick={reconcile}>Automatisch abgleichen</Button>}
+      subtitle="Kontobewegungen importieren, mit Rechnungen abgleichen und sicher in die Buchhaltung übernehmen."
+      actions={<div className="document-actions"><Button variant="secondary" onClick={reconcile}>Automatisch abgleichen</Button><Button onClick={prepareBookkeeping}>PayPal-Buchhaltung erstellen</Button></div>}
     />
     {message ? <div className="alert alert-success">{message}</div> : null}
     {error ? <div className="alert alert-danger">{error}</div> : null}
@@ -86,8 +119,8 @@ export function AccountsPage() {
         <div className="account-logo paypal">P</div>
         <div>
           <h2>PayPal Business</h2>
-          <p>Der PayPal-Aktivitätsbericht wird mit Brutto, Gebühr, Netto, Rechnung und verbundenem Transaktionscode gelesen.</p>
-          <div className="account-meta"><Badge tone="info">{paypalCount} Zeilen</Badge><Badge tone="success">{paypalMatched} zugeordnet</Badge><Badge tone="warning">{paypalReview} prüfen</Badge></div>
+          <p>Brutto, Gebühr, Netto, Rechnung und verbundene Bankbewegungen werden getrennt verarbeitet.</p>
+          <div className="account-meta"><Badge tone="info">{paypalCount} Zeilen</Badge><Badge tone="success">{paypalBooked} gebucht</Badge><Badge tone="warning">{paypalReview} prüfen</Badge></div>
         </div>
         <Button variant="secondary" icon="upload" onClick={() => paypalInput.current?.click()}>PayPal-CSV importieren</Button>
         <input ref={paypalInput} type="file" accept=".csv,text/csv" hidden onChange={(event) => void handleFile(event.target.files?.[0], "paypal")} />
@@ -95,35 +128,46 @@ export function AccountsPage() {
     </div>
     {paypalCount ? <div className="stat-grid">
       <StatCard label="PayPal-Zeilen" value={String(paypalCount)} detail={`${paypalInternal} interne Umbuchungen`} />
-      <StatCard label="Zugeordnet" value={String(paypalMatched)} tone="positive" detail="Dokument und Buchung gefunden" />
-      <StatCard label="Noch prüfen" value={String(paypalReview)} tone="negative" detail="Beleg oder Konto fehlt" />
+      <StatCard label="Buchhaltung" value={String(paypalBooked)} tone="positive" detail={`${paypalReviewed} geprüft`} />
+      <StatCard label="Noch prüfen" value={String(paypalReview)} tone="negative" detail={`${paypalMatched} mit Beleg zugeordnet`} />
       <StatCard label="PayPal-Gebühren" value={formatCurrency(paypalFees)} tone="blue" detail="Entgelt aus CSV" />
     </div> : null}
     <Card>
-      <div className="card-heading"><div><h2>Kontobewegungen</h2><p>Bankgutschriften auf das PayPal-Konto werden als Umbuchung erkannt und nicht als Einnahme behandelt.</p></div></div>
+      <div className="card-heading"><div><h2>Kontobewegungen</h2><p>Bankgutschriften auf PayPal sind Umbuchungen. Sie werden nicht als Einnahmen oder Betriebsausgaben gezählt.</p></div></div>
       {sortedTransactions.length === 0 ? (
         <EmptyState icon="accounts" title="Noch keine Kontobewegungen" text="Exportiere bei deiner Bank oder PayPal eine CSV-Datei und importiere sie hier." />
       ) : (
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Datum</th><th>Konto</th><th>Art</th><th>Gegenpartei / Beschreibung</th><th>Rechnung / Treffer</th><th>Status</th><th>Gebühr</th><th className="align-right">Betrag</th></tr></thead>
+            <thead><tr><th>Datum</th><th>Konto</th><th>Art</th><th>Gegenpartei / Beschreibung</th><th>Rechnung / Treffer</th><th>Abgleich</th><th>Buchhaltung</th><th>Gebühr</th><th className="align-right">Betrag</th></tr></thead>
             <tbody>{sortedTransactions.map((item) => (
               <TransactionRow
                 key={item.id}
                 item={item}
                 document={state.documents.find((document) => document.id === item.matchedDocumentId)}
+                onReview={() => setSelectedId(item.id)}
               />
             ))}</tbody>
           </table>
         </div>
       )}
     </Card>
-    <div className="alert alert-info">PayPal-Zahlungen werden erst nach eindeutigem Belegabgleich als erledigt markiert. Bank → PayPal und PayPal → Bank bleiben interne Umbuchungen und verändern weder Umsatz noch Betriebsausgaben.</div>
+    <div className="alert alert-info">PayPal-Zahlungen werden zunächst mit 0 % Steuer gebucht. Vorsteuer wird erst nach Prüfung der echten Lieferantenrechnung bestätigt. Bank → PayPal und PayPal → Bank bleiben reine Umbuchungen.</div>
+    <PayPalTransactionReviewModal transaction={selectedTransaction} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
   </div>;
 }
 
-function TransactionRow({ item, document }: { item: ImportedTransaction; document?: BusinessDocument }) {
+function TransactionRow({
+  item,
+  document,
+  onReview,
+}: {
+  item: ImportedTransaction;
+  document?: BusinessDocument;
+  onReview: () => void;
+}) {
   const internal = isInternalTransfer(item);
+  const canReview = item.accountType === "paypal" && !internal && Boolean(item.matchedLedgerEntryId);
   return <tr>
     <td>{formatDate(item.date)}<small>{item.time || ""}</small></td>
     <td><Badge tone={item.accountType === "paypal" ? "info" : "neutral"}>{item.accountType === "paypal" ? "PayPal" : "Bank"}</Badge></td>
@@ -131,13 +175,10 @@ function TransactionRow({ item, document }: { item: ImportedTransaction; documen
     <td><strong>{item.counterparty || item.description}</strong><small>{item.counterparty ? item.description.split(" · ")[0] : item.externalId || "Keine externe Referenz"}</small></td>
     <td><strong>{document?.documentNumber || item.invoiceNumber || "–"}</strong><small>{document ? `${documentTypeLabel(document)} · ${item.matchConfidence}%` : item.relatedExternalId || item.externalId || ""}</small></td>
     <td><Badge tone={item.status === "matched" ? "success" : item.status === "needsReview" ? "warning" : item.status === "ignored" ? "info" : "neutral"}>{statusLabel(item)}</Badge></td>
+    <td><div className="document-actions"><Badge tone={item.bookkeepingStatus === "reviewed" ? "success" : item.bookkeepingStatus === "booked" ? "warning" : internal ? "info" : "neutral"}>{internal ? "Umbuchung" : payPalBookkeepingStatusLabel(item)}</Badge>{canReview ? <Button variant="secondary" onClick={onReview}>Prüfen</Button> : null}</div></td>
     <td>{item.feeAmount ? formatCurrency(item.feeAmount) : "–"}</td>
     <td className={`align-right ${item.amount >= 0 ? "money-positive" : "money-negative"}`}><strong>{item.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(item.amount))}</strong><small>{item.currency || "EUR"}</small></td>
   </tr>;
-}
-
-function isInternalTransfer(item: ImportedTransaction) {
-  return item.transactionType === "bankFunding" || item.transactionType === "bankWithdrawal";
 }
 
 function transactionTypeLabel(type?: ImportedTransactionType) {
