@@ -90,7 +90,9 @@ export function AccountsPage() {
   ).length;
   const paypalReviewed = paypal.filter((item) => item.bookkeepingStatus === "reviewed").length;
   const paypalFees = paypal.reduce((sum, item) => sum + (item.feeAmount || 0), 0);
-  const flatpayReports = state.documents.filter((document) => document.type === "salesReport");
+  const flatpayReports = state.documents.filter(
+    (document) => document.type === "zReport" && document.metadata?.provider === "Flatpay",
+  );
   const sortedTransactions = useMemo(
     () =>
       [...state.importedTransactions].sort((left, right) =>
@@ -216,7 +218,6 @@ function documentTypeLabel(document: BusinessDocument) {
     receipt: "Quittung",
     purchaseContract: "Ankaufvertrag",
     supplierInvoice: "Eingangsrechnung",
-    zReport: "Tagesabschluss",
-    salesReport: "Umsatzbericht",
+    zReport: "Tagesabschluss / Umsatzbericht",
   } as const)[document.type];
 }
