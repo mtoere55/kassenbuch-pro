@@ -158,7 +158,6 @@ export function compareFlatpayReportToLedger(
   const total = roundMoney(cash + card + other);
   const targetCash = roundMoney(report.cashSales - report.cashRefunds);
   const targetCard = roundMoney(report.cardSales - report.cardRefunds);
-  const targetOther = roundMoney(report.otherSales - report.otherRefunds);
   const differences = {
     cash: roundMoney(targetCash - cash),
     card: roundMoney(targetCard - card),
@@ -199,7 +198,7 @@ export function createFlatpayImportPlan(
   const document: BusinessDocument = {
     id: documentId,
     documentNumber,
-    type: "salesReport",
+    type: "zReport",
     date: report.endDate,
     amount: report.totalSales,
     taxAmount: report.standardVat,
@@ -210,6 +209,7 @@ export function createFlatpayImportPlan(
     ocrText: report.sourceText,
     metadata: {
       provider: "Flatpay",
+      reportKind: "Umsatzbericht",
       periodStart: report.startDate,
       periodEnd: report.endDate,
       cash: report.cashSales,
