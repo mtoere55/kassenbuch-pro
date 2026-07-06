@@ -20,6 +20,7 @@ export type LedgerSource =
   | "scan"
   | "bankImport"
   | "paypalImport"
+  | "flatpayImport"
   | "kasImport"
   | "manual";
 export type ImportedTransactionType =

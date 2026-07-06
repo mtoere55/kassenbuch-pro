@@ -40,6 +40,7 @@ export function ledgerSourceLabel(entry: LedgerEntry): string {
     scan: "Scanner",
     bankImport: "Bank-Import",
     paypalImport: "PayPal-Import",
+    flatpayImport: "Flatpay-Import",
     kasImport: "KAS-Import",
     manual: "Manuell",
   } as const)[entry.source];
