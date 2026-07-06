@@ -12,7 +12,6 @@ export type DocumentType =
   | "receipt"
   | "purchaseContract"
   | "zReport"
-  | "salesReport"
   | "supplierInvoice";
 export type LedgerDirection = "income" | "expense" | "transfer";
 export type LedgerSource =
