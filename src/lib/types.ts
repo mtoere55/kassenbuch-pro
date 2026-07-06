@@ -22,6 +22,13 @@ export type LedgerSource =
   | "paypalImport"
   | "kasImport"
   | "manual";
+export type ImportedTransactionType =
+  | "payment"
+  | "refund"
+  | "bankFunding"
+  | "bankWithdrawal"
+  | "fee"
+  | "other";
 
 export interface Customer {
   id: string;
@@ -153,9 +160,20 @@ export interface ImportedTransaction {
   id: string;
   accountType: "bank" | "paypal";
   date: string;
+  time?: string;
   amount: number;
   description: string;
   externalId?: string;
+  relatedExternalId?: string;
+  transactionType?: ImportedTransactionType;
+  grossAmount?: number;
+  feeAmount?: number;
+  netAmount?: number;
+  balanceAfter?: number;
+  currency?: string;
+  counterparty?: string;
+  senderEmail?: string;
+  invoiceNumber?: string;
   matchedDocumentId?: string;
   matchedLedgerEntryId?: string;
   matchConfidence: number;
