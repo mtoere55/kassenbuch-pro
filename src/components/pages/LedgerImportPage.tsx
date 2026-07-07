@@ -17,6 +17,7 @@ import { migrateKasImportSources } from "@/lib/kas-review";
 import { useKassenStore } from "@/lib/store";
 import type { BusinessDocument, LedgerEntry, PaymentMethod } from "@/lib/types";
 import { DocumentView } from "../DocumentView";
+import { OwnerAccessButton } from "../OwnerAccessButton";
 import { Badge, Button, Card, Modal } from "../ui";
 import { KasImportModal } from "./KasImportModal";
 import { LedgerPage } from "./LedgerPage";
@@ -125,7 +126,7 @@ export function LedgerImportPage() {
         : item),
     });
     setPreview(document);
-    setNotice(`${documentNumber} oluşturuldu; gelir ikinci kez kaydedilmedi.`);
+    setNotice(`${documentNumber} wurde erstellt; der Umsatz wurde nicht doppelt gebucht.`);
   }
 
   return <>
@@ -137,7 +138,7 @@ export function LedgerImportPage() {
       <Button onClick={createDocumentFromEntry}>Rechnung / Quittung aus Buchung</Button>
     </div>
     {notice ? <div className="alert alert-success">{notice}</div> : null}
-    <div className="alert alert-info">Echtbetrieb ab {config.startDate}: fortlaufende Nachweisnummern beginnen mit {config.prefix}-{String(config.startNumber).padStart(6, "0")}. Servicezugang: {serviceOpen ? "offen" : "geschlossen"}.</div>
+    <div className="alert alert-info">Echtbetrieb ab {config.startDate}: fortlaufende Nachweisnummern beginnen mit {config.prefix}-{String(config.startNumber).padStart(6, "0")}. Inhaberbereich: {serviceOpen ? "offen" : "geschlossen"}. {!serviceOpen ? <OwnerAccessButton /> : null}</div>
     {official.length ? <Card><div className="card-heading"><div><h2>Letzte Nachweisnummern</h2><p>Fortlaufende interne Programmkontrolle ab Juli.</p></div><Badge tone="info">{official.length} angezeigt</Badge></div><div className="detail-list">{official.map((entry) => <div key={entry.id}><dt>{officialRecordNumber(entry)}</dt><dd>{entry.date} · {entry.description} · {formatCurrency(entry.amount)}</dd></div>)}</div></Card> : null}
     <LedgerPage />
     <KasImportModal open={open} onClose={() => setOpen(false)} onImported={setNotice} />
