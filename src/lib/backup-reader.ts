@@ -129,7 +129,7 @@ export function planBackupImport(
 }
 
 export function backupSourceId(fingerprint: string, recordId: number): string {
-  return `backup:${fingerprint}:${recordId}`;
+  return `kas:${fingerprint}:${recordId}`;
 }
 
 function parseCategory(bytes: Uint8Array, view: DataView, offset: number): BackupCategory {
@@ -188,10 +188,10 @@ function createLedgerEntry(
   const taxAmount = taxRate ? getTaxAmountFromGross(amount, taxRate) : 0;
   const taxMode: TaxMode = differential ? "differential" : taxRate ? "standard19" : "taxFree";
   const accountLabel = category?.name || "Nicht zugeordnet";
-  const accountCode = transaction.categoryCode ? String(transaction.categoryCode) : undefined;
+  const accountCode = category ? String(category.code) : "0000";
   const documentNumber = transaction.sequence
-    ? `ALT-${transaction.sequence}`
-    : `ALT-${transaction.recordId}`;
+    ? `KAS-${transaction.sequence}`
+    : `KAS-${transaction.recordId}`;
 
   return {
     id: makeId("ledger"),
@@ -200,8 +200,8 @@ function createLedgerEntry(
     amount,
     paymentMethod: "cash",
     description: transaction.description || accountLabel,
-    category: `${accountCode || "–"} · ${accountLabel}`,
-    source: "manual",
+    category: `${accountCode} · ${accountLabel}`,
+    source: "kasImport",
     sourceId,
     taxAmount,
     taxRate,
@@ -212,7 +212,7 @@ function createLedgerEntry(
     documentNumber,
     cashChange: transaction.signedAmount,
     netAmount: roundMoney(amount - taxAmount),
-    note: `Backup-Import aus ${fileName}; Original-ID ${transaction.recordId}`,
+    note: `KAS-Import aus ${fileName}; Original-ID ${transaction.recordId}`,
     manualKind: classification.manualKind,
     createdAt: `${transaction.date}T12:00:00.000Z`,
   };
