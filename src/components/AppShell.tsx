@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import {
+  closeServiceAccess,
+  requestServiceAccess,
+  useServiceAccess,
+} from "@/lib/bookkeeping-rules";
 import { pageLabel } from "@/lib/i18n";
 import { useKassenStore } from "@/lib/store";
 import type { PageKey } from "@/lib/types";
@@ -30,8 +35,10 @@ const mainNav: Array<{ key: PageKey; icon: IconName }> = [
 
 export function AppShell() {
   const { state, hydrated } = useKassenStore();
+  const { open: serviceOpen } = useServiceAccess();
   const [page, setPage] = useState<PageKey>("dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const secretClicks = useRef({ count: 0, lastAt: 0 });
   const language = state.settings.language;
 
   function navigate(next: PageKey) {
@@ -39,16 +46,33 @@ export function AppShell() {
     setMobileOpen(false);
   }
 
+  function handleSecretAccess() {
+    const now = Date.now();
+    if (now - secretClicks.current.lastAt > 2500) secretClicks.current.count = 0;
+    secretClicks.current.lastAt = now;
+    secretClicks.current.count += 1;
+    if (secretClicks.current.count < 5) return;
+    secretClicks.current.count = 0;
+    if (serviceOpen) {
+      closeServiceAccess();
+      return;
+    }
+    if (requestServiceAccess()) setPage("settings");
+  }
+
   if (!hydrated) return <div className="loading-screen"><div className="brand-mark">K</div><p>Kassenbuch Pro wird geladen …</p></div>;
 
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
-        <div className="brand"><div className="brand-mark">K</div><div><strong>Kassenbuch Pro</strong><span>Handel & Buchhaltung</span></div></div>
+        <div className="brand">
+          <button className="brand-mark" type="button" onClick={handleSecretAccess} aria-label="Kassenbuch Pro">K</button>
+          <div><strong>Kassenbuch Pro</strong><span>Handel & Buchhaltung</span></div>
+        </div>
         <nav>
           {mainNav.map((item) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => navigate(item.key)}><Icon name={item.icon} width={20} height={20} /><span>{pageLabel(language, item.key)}</span></button>)}
         </nav>
-        <div className="sidebar-bottom"><button className={page === "settings" ? "active" : ""} onClick={() => navigate("settings")}><Icon name="settings" width={20} height={20} /><span>{pageLabel(language, "settings")}</span></button><div className="business-chip"><div>{state.settings.businessName.slice(0, 1).toUpperCase()}</div><span><strong>{state.settings.businessName}</strong><small>Lokale Prototyp-Version</small></span></div></div>
+        <div className="sidebar-bottom"><button className={page === "settings" ? "active" : ""} onClick={() => navigate("settings")}><Icon name="settings" width={20} height={20} /><span>{pageLabel(language, "settings")}</span></button><div className="business-chip"><div>{state.settings.businessName.slice(0, 1).toUpperCase()}</div><span><strong>{state.settings.businessName}</strong><small>{serviceOpen ? "Servicezugang offen" : "Lokale Prototyp-Version"}</small></span></div></div>
       </aside>
       {mobileOpen ? <button className="sidebar-overlay" aria-label="Menü schließen" onClick={() => setMobileOpen(false)} /> : null}
       <main className="main-area">
