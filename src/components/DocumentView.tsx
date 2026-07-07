@@ -1,6 +1,7 @@
 "use client";
 
 import { formatCurrency, formatDate } from "@/lib/accounting";
+import { officialRecordNumber } from "@/lib/bookkeeping-rules";
 import { useKassenStore } from "@/lib/store";
 import type { BusinessDocument } from "@/lib/types";
 
@@ -9,6 +10,7 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
   const customer = state.customers.find((item) => item.id === document.customerId);
   const device = state.devices.find((item) => item.id === document.deviceId);
   const settings = state.settings;
+  const recordNumber = officialRecordNumber(document);
   const title =
     document.type === "invoice"
       ? "Rechnung"
@@ -19,6 +21,7 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
           : document.type === "zReport"
             ? "Tagesabschluss"
             : "Eingangsrechnung";
+  const description = String(document.metadata?.description || document.metadata?.bookingText || title);
 
   return (
     <article className="print-document">
@@ -34,6 +37,7 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
         <div className="document-meta">
           <h1>{title}</h1>
           <div><span>Nummer</span><strong>{document.documentNumber}</strong></div>
+          {recordNumber ? <div><span>Nachweis</span><strong>{recordNumber}</strong></div> : null}
           <div><span>Datum</span><strong>{formatDate(document.date)}</strong></div>
         </div>
       </header>
@@ -78,7 +82,7 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
                   <div>Zustand: {device.condition}</div>
                 </>
               ) : (
-                <strong>{title}</strong>
+                <strong>{description}</strong>
               )}
             </td>
             <td className="align-right">{formatCurrency(document.amount)}</td>
@@ -93,13 +97,14 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
 
       {document.taxMode === "differential" && document.type !== "purchaseContract" ? (
         <p className="tax-note">
-          Gebrauchtgegenstände/Sonderregelung. Besteuerung nach § 25a UStG.
-          Die Umsatzsteuer wird nicht gesondert ausgewiesen.
+          Differenzbesteuerung nach § 25a UStG. Die Umsatzsteuer wird nicht gesondert ausgewiesen.
         </p>
       ) : document.taxMode === "standard19" && document.type !== "zReport" ? (
         <p className="tax-note">
           Enthaltene Umsatzsteuer (19 %): {formatCurrency(document.taxAmount)}
         </p>
+      ) : document.taxMode === "taxFree" && document.type !== "purchaseContract" ? (
+        <p className="tax-note">Keine gesonderte Umsatzsteuer in diesem Beleg.</p>
       ) : null}
 
       {document.type === "receipt" ? (
