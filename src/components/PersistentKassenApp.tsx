@@ -7,6 +7,7 @@ import {
   loadAttachmentRecords,
   mergeStateWithBrowserAttachments,
 } from "@/lib/browser-persistence";
+import { applyOfficialRecordNumbers } from "@/lib/bookkeeping-rules";
 import { KassenProvider, useKassenStore } from "@/lib/store";
 
 if (typeof window !== "undefined") {
@@ -17,6 +18,7 @@ export function PersistentKassenApp() {
   return (
     <KassenProvider>
       <AttachmentHydrator />
+      <OfficialNumberingBridge />
       <AppShell />
     </KassenProvider>
   );
@@ -43,6 +45,18 @@ function AttachmentHydrator() {
     return () => {
       active = false;
     };
+  }, [hydrated, replaceState, state]);
+
+  return null;
+}
+
+function OfficialNumberingBridge() {
+  const { state, hydrated, replaceState } = useKassenStore();
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const numbered = applyOfficialRecordNumbers(state);
+    if (numbered !== state) replaceState(numbered);
   }, [hydrated, replaceState, state]);
 
   return null;
