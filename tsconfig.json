@@ -19,6 +19,7 @@
       }
     ],
     "paths": {
+      "@/lib/bank-statement": ["./src/lib/bank-statement-flexible.ts"],
       "@/*": ["./src/*"]
     }
   },

@@ -1,10 +1,5 @@
-import { AppShell } from "@/components/AppShell";
-import { KassenProvider } from "@/lib/store";
+import { PersistentKassenApp } from "@/components/PersistentKassenApp";
 
 export default function Home() {
-  return (
-    <KassenProvider>
-      <AppShell />
-    </KassenProvider>
-  );
+  return <PersistentKassenApp />;
 }

@@ -1,0 +1,18 @@
+.view-tabs { display: inline-flex; gap: 4px; padding: 4px; background: var(--surface-3); border: 1px solid var(--line); border-radius: 11px; margin-bottom: 18px; }
+.view-tabs button, .booking-kind-tabs button { border: 0; background: transparent; border-radius: 8px; min-height: 36px; padding: 0 15px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.view-tabs button.active, .booking-kind-tabs button.active { background: white; color: var(--primary); box-shadow: 0 2px 8px rgba(23,32,42,.08); }
+.booking-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+.ledger-toolbar > input[type="month"] { min-width: 155px; }
+.cashbook-table { min-width: 1320px; }
+.cashbook-table td { white-space: nowrap; }
+.cashbook-table td:nth-child(12) { white-space: normal; min-width: 220px; }
+.booking-kind-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px; background: var(--surface-3); border-radius: 11px; margin-bottom: 18px; }
+.booking-details { margin-top: 15px; }
+.textarea { min-height: 78px; padding-top: 10px; resize: vertical; }
+.booking-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.split-box { margin-top: 16px; padding: 15px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
+.split-row { display: grid; grid-template-columns: 1.3fr 1.4fr .7fr .55fr; gap: 8px; margin-bottom: 8px; }
+.split-total { display: flex; justify-content: flex-end; gap: 18px; padding: 10px 3px 0; font-size: 12px; }
+.split-total.ok strong { color: var(--green); }
+.split-total.warning strong { color: var(--red); }
+@media (max-width: 760px) { .booking-kind-tabs { grid-template-columns: repeat(2, 1fr); } .booking-options { grid-template-columns: 1fr; } .split-row { grid-template-columns: 1fr; border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 12px; } }
