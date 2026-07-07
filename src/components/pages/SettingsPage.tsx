@@ -22,7 +22,11 @@ export function SettingsPage() {
   const [message, setMessage] = useState("");
   const importInput = useRef<HTMLInputElement>(null);
 
-  useEffect(() => setControlDraft(config), [config]);
+  useEffect(() => {
+    // The external local configuration is intentionally synchronized here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setControlDraft(config);
+  }, [config]);
 
   function set<K extends keyof BusinessSettings>(key: K, value: BusinessSettings[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
