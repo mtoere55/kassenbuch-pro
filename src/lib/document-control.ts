@@ -1,3 +1,4 @@
+import { resolveBookkeepingRule } from "./bookkeeping-rules";
 import type { BusinessDocument } from "./types";
 
 export interface SupplierInvoiceFingerprintInput {
@@ -29,6 +30,12 @@ export const SUPPLIER_BOOKKEEPING_ACCOUNTS: BookkeepingAccount[] = [
     keywords: ["display", "akku", "batterie", "ersatzteil", "reparatur", "lcd", "oled"],
   },
   {
+    code: "3430",
+    label: "SIM Karten Einkauf",
+    defaultTaxRate: 19,
+    keywords: ["sim karte", "simkarte", "lyca", "lycamobile"],
+  },
+  {
     code: "4610",
     label: "Werbekosten",
     defaultTaxRate: 19,
@@ -44,7 +51,7 @@ export const SUPPLIER_BOOKKEEPING_ACCOUNTS: BookkeepingAccount[] = [
     code: "4970",
     label: "Bank-, Karten- und PayPal-Gebühren",
     defaultTaxRate: 0,
-    keywords: ["paypal", "flatpay", "gebuehr", "gebühr", "bankgebuehr", "bankgebühr", "provision"],
+    keywords: ["paypal", "flatpay", "gebuehr", "gebühr", "bankgebuehr", "bankgebühr"],
   },
   {
     code: "4980",
@@ -113,6 +120,16 @@ export function findSupplierInvoiceDuplicate(
 }
 
 export function inferSupplierAccount(vendor: string, ocrText: string): BookkeepingAccount {
+  const fixed = resolveBookkeepingRule({
+    name: vendor,
+    text: ocrText,
+    context: "supplierInvoice",
+  });
+  if (fixed && fixed.direction === "expense") {
+    const known = SUPPLIER_BOOKKEEPING_ACCOUNTS.find((account) => account.code === fixed.accountCode);
+    if (known) return known;
+  }
+
   const haystack = `${vendor} ${ocrText}`.toLowerCase();
   return (
     SUPPLIER_BOOKKEEPING_ACCOUNTS.find((account) =>
