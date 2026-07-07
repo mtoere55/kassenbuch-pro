@@ -11,6 +11,7 @@ import {
   type BankStatementReport,
   type BankStatementTransaction,
 } from "./bank-statement";
+import { resolveBookkeepingRule } from "./bookkeeping-rules";
 import type { LedgerDirection } from "./types";
 
 export {
@@ -152,9 +153,29 @@ function classifyBankTransaction(
   if (/bargeldeinzahlung|sb-einzahlung|bareinzahlung/.test(value)) {
     return classification("cashDeposit", "1200", "transfer", true, false);
   }
+  if (/barauszahlung|barabhebung|geldautomat/.test(value)) {
+    return classification("cashDeposit", "1000", "transfer", true, false);
+  }
   if (amount < 0 && /paypal europe/.test(value)) {
     return classification("paypalFunding", "1370", "transfer", true, false);
   }
+
+  const fixedRule = resolveBookkeepingRule({
+    name: extractCounterparty(description),
+    text: `${bookingType} ${description}`,
+    amount,
+    context: "bank",
+  });
+  if (fixedRule) {
+    return classification(
+      fixedRule.direction === "income" ? "income" : fixedRule.direction === "expense" ? "expense" : "unknown",
+      fixedRule.accountCode,
+      fixedRule.direction,
+      fixedRule.internalTransfer,
+      fixedRule.requiresInvoiceReview,
+    );
+  }
+
   if (/abrechnung|kontoführung|kontofuehrung|entgelte|bankpreis|gebühr|gebuehr/.test(value)) {
     return classification("bankFee", "4970", "expense", false, false);
   }
@@ -170,19 +191,13 @@ function classifyBankTransaction(
   if (amount < 0 && /miete|betriebskosten/.test(value)) {
     return classification("rent", "4210", "expense", false, false);
   }
-  if (amount < 0 && /unitel|guthaben.?auflade|aufladekart/.test(value)) {
-    return classification("expense", "3200", "expense", false, true);
-  }
-  if (amount < 0 && /aswo/.test(value)) {
-    return classification("expense", "3400", "expense", false, true);
-  }
   if (amount < 0 && /mark-e|strom|energie/.test(value)) {
     return classification("expense", "4240", "expense", false, true);
   }
   if (amount < 0 && /telefonica germany gmbh|tarifrechnung/.test(value)) {
     return classification("expense", "4920", "expense", false, true);
   }
-  if (amount < 0 && /amazon|tchibo|prifoto/.test(value)) {
+  if (amount < 0 && /amazon|tchibo/.test(value)) {
     return classification("expense", "4980", "expense", false, true);
   }
   if (amount > 0 && /google ireland/.test(value)) {
@@ -234,6 +249,9 @@ function extractCounterparty(description: string): string {
     /MURAT TOERE/i,
     /Prifoto GmbH/i,
     /ASWO International Service GmbH/i,
+    /otara GmbH/i,
+    /MAS Trade/i,
+    /Lyca(?:mobile)?/i,
     /AOK NORDWEST/i,
     /IKK classic/i,
     /UniTel/i,
