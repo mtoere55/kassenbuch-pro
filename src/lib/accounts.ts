@@ -11,12 +11,15 @@ export const BOOKING_CATEGORIES: BookingCategory[] = [
   { code: "1200", label: "Bank", side: "neutral", vat: 0 },
   { code: "1360", label: "Geldtransit und Karte", side: "neutral", vat: 0 },
   { code: "1370", label: "PayPal", side: "neutral", vat: 0 },
+  { code: "1590", label: "UniTel Verrechnung", side: "neutral", vat: 0 },
+  { code: "1591", label: "Prifoto Verrechnung", side: "neutral", vat: 0 },
   { code: "1800", label: "Privatentnahme", side: "neutral", vat: 0 },
   { code: "1890", label: "Privateinlage", side: "neutral", vat: 0 },
   { code: "2740", label: "Sonstige betriebliche Ertraege", side: "in", vat: 0 },
   { code: "3200", label: "Wareneinkauf 19 Prozent", side: "out", vat: 19 },
   { code: "3290", label: "Geraeteankauf Differenzbesteuerung", side: "out", vat: 0 },
   { code: "3400", label: "Ersatzteile und Reparaturmaterial", side: "out", vat: 19 },
+  { code: "3430", label: "SIM Karten Einkauf", side: "out", vat: 19 },
   { code: "4120", label: "Gehaelter", side: "out", vat: 0 },
   { code: "4130", label: "Gesetzliche soziale Aufwendungen", side: "out", vat: 0 },
   { code: "4210", label: "Miete und Nebenkosten", side: "out", vat: 0 },
@@ -29,6 +32,7 @@ export const BOOKING_CATEGORIES: BookingCategory[] = [
   { code: "8336", label: "Erloese Differenzbesteuerung", side: "in", vat: 0 },
   { code: "8390", label: "Erloese Differenzbesteuerung KAS", side: "in", vat: 0 },
   { code: "8400", label: "Erloese 19 Prozent", side: "in", vat: 19 },
+  { code: "8510", label: "Provisionserloese 19 Prozent", side: "in", vat: 19 },
   { code: "8600", label: "Steuerfreie Erloese", side: "in", vat: 0 },
 ];
 
