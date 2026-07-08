@@ -41,6 +41,7 @@ export function ledgerSourceLabel(entry: LedgerEntry): string {
     bankImport: "Bank-Import",
     paypalImport: "PayPal-Import",
     flatpayImport: "Flatpay-Import",
+    unitelImport: "UniTel-Import",
     kasImport: "KAS-Import",
     manual: "Manuell",
   } as const)[entry.source];
