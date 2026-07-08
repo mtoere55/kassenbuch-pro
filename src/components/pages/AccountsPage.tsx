@@ -9,20 +9,18 @@ import {
   parseSparkasseStatement,
 } from "@/lib/bank-statement";
 import { parseTransactionsCsv, summarizeImportedTransactions } from "@/lib/csv";
-import {
-  isInternalTransfer,
-  payPalBookkeepingStatusLabel,
-  preparePayPalBookkeeping,
-} from "@/lib/paypal-bookkeeping";
+import { isInternalTransfer, preparePayPalBookkeeping } from "@/lib/paypal-bookkeeping";
 import { readPdfWithLayout } from "@/lib/pdf-reader";
 import { useKassenStore } from "@/lib/store";
 import { reconcileImportedState } from "@/lib/transaction-reconciliation";
+import { buildUnitelDocumentControl } from "@/lib/unitel-control";
 import type { BusinessDocument, ImportedTransaction, ImportedTransactionType } from "@/lib/types";
 import { Icon } from "../Icon";
 import { Badge, Button, Card, EmptyState, PageHeader, StatCard } from "../ui";
 import { BankTransactionReviewModal } from "./BankTransactionReviewModal";
 import { FlatpayReportImportModal } from "./FlatpayReportImportModal";
 import { PayPalTransactionReviewModal } from "./PayPalTransactionReviewModal";
+import { UnitelDailyImportModal } from "./UnitelDailyImportModal";
 import { UnitelReportImportModal } from "./UnitelReportImportModal";
 
 const MAX_INLINE_PDF_BYTES = 3 * 1024 * 1024;
@@ -34,6 +32,7 @@ export function AccountsPage() {
   const [selectedId, setSelectedId] = useState<string>();
   const [flatpayOpen, setFlatpayOpen] = useState(false);
   const [unitelOpen, setUnitelOpen] = useState(false);
+  const [unitelDailyOpen, setUnitelDailyOpen] = useState(false);
   const [bankPdfLoading, setBankPdfLoading] = useState(false);
   const bankCsvInput = useRef<HTMLInputElement>(null);
   const bankPdfInput = useRef<HTMLInputElement>(null);
@@ -142,10 +141,21 @@ export function AccountsPage() {
   const flatpayReports = state.documents.filter(
     (document) => document.type === "zReport" && document.metadata?.provider === "Flatpay",
   );
+  const unitelDailyReports = state.documents.filter(
+    (document) => document.type === "zReport" && document.metadata?.reportKind === "Pin-Sales-Tagesliste",
+  );
   const unitelReports = state.documents
-    .filter((document) => document.type === "zReport" && document.metadata?.provider === "UniTel")
+    .filter((document) =>
+      document.type === "zReport" &&
+      document.metadata?.provider === "UniTel" &&
+      document.metadata?.reportKind === "Guthaben-Monatsabrechnung",
+    )
     .sort((left, right) => right.date.localeCompare(left.date));
-  const unitelMatched = unitelReports.filter((document) => document.metadata?.matchedExistingLedger === true).length;
+  const unitelControls = unitelReports.map((document) => ({
+    document,
+    control: buildUnitelDocumentControl(document, state.ledger),
+  }));
+  const unitelMatched = unitelControls.filter((item) => item.control?.exact).length;
   const sortedTransactions = useMemo(
     () =>
       [...state.importedTransactions].sort((left, right) =>
@@ -199,11 +209,14 @@ export function AccountsPage() {
       <Card className="account-card">
         <div className="account-logo bank">U</div>
         <div>
-          <h2>UniTel Guthaben-Kontrolle</h2>
-          <p>Monatsabrechnung auslesen, Provision prüfen und mit erkannten UniTel-/Guthaben-Buchungen vergleichen. Keine Doppelbuchung.</p>
-          <div className="account-meta"><Badge tone="info">{unitelReports.length} Abrechnungen</Badge><Badge tone="success">{unitelMatched} passend</Badge><Badge tone={unitelReports.length - unitelMatched ? "warning" : "success"}>{unitelReports.length - unitelMatched} Differenzen</Badge></div>
+          <h2>UniTel Guthaben</h2>
+          <p>Pin-Sales-Tagesliste ins Kassenbuch übernehmen und Monatsabrechnungen automatisch dagegen prüfen.</p>
+          <div className="account-meta"><Badge tone="info">{unitelDailyReports.length} Tageslisten</Badge><Badge tone="info">{unitelReports.length} Monats-PDFs</Badge><Badge tone="success">{unitelMatched} passend</Badge><Badge tone={unitelReports.length - unitelMatched ? "warning" : "success"}>{unitelReports.length - unitelMatched} Differenzen</Badge></div>
         </div>
-        <Button variant="secondary" icon="upload" onClick={() => setUnitelOpen(true)}>UniTel-PDF prüfen</Button>
+        <div className="document-actions">
+          <Button icon="upload" onClick={() => setUnitelDailyOpen(true)}>Tagesliste importieren</Button>
+          <Button variant="secondary" icon="upload" onClick={() => setUnitelOpen(true)}>Monats-PDF prüfen</Button>
+        </div>
       </Card>
     </div>
     {paypalCount ? <div className="stat-grid">
@@ -212,26 +225,26 @@ export function AccountsPage() {
       <StatCard label="Noch prüfen" value={String(paypalReview)} tone="negative" detail={`${paypalMatched} mit Beleg zugeordnet`} />
       <StatCard label="PayPal-Gebühren" value={formatCurrency(paypalFees)} tone="blue" detail="Entgelt aus CSV" />
     </div> : null}
-    {unitelReports.length ? <Card>
-      <div className="card-heading"><div><h2>UniTel Monatskontrolle</h2><p>Archivierte Monatsabrechnungen und der beim Import erkannte Kassenbuch-Abgleich. Die PDF erzeugt keine zusätzliche Umsatzbuchung.</p></div></div>
+    {unitelControls.length ? <Card>
+      <div className="card-heading"><div><h2>UniTel Monatskontrolle</h2><p>Der Abgleich wird live aus den aktuellen Tagessummen berechnet. Das Monats-PDF erzeugt keine doppelte Umsatzbuchung.</p></div></div>
       <div className="table-wrap">
         <table className="data-table">
           <thead><tr><th>Zeitraum</th><th>Rechnung</th><th>Guthaben Gesamt</th><th>Kassenbuch erkannt</th><th>Differenz</th><th>Provision Brutto</th><th>An UniTel</th><th>Status</th></tr></thead>
-          <tbody>{unitelReports.map((document) => {
-            const periodStart = metadataText(document, "periodStart");
-            const periodEnd = metadataText(document, "periodEnd");
-            const total = metadataNumber(document, "totalCardValue");
-            const ledgerTotal = metadataNumber(document, "recognizedLedgerTotal");
-            const difference = metadataNumber(document, "difference");
-            const matched = document.metadata?.matchedExistingLedger === true;
+          <tbody>{unitelControls.map(({ document, control }) => {
+            const total = control?.report.totalCardValue || metadataNumber(document, "totalCardValue");
+            const ledgerTotal = control?.ledgerTotal || 0;
+            const difference = control?.difference ?? total;
+            const matched = Boolean(control?.exact);
+            const periodStart = control?.report.periodStart || metadataText(document, "periodStart");
+            const periodEnd = control?.report.periodEnd || metadataText(document, "periodEnd");
             return <tr key={document.id}>
               <td>{periodStart && periodEnd ? `${formatDate(periodStart)} – ${formatDate(periodEnd)}` : formatDate(document.date)}</td>
-              <td><strong>{metadataText(document, "invoiceNumber") || document.documentNumber}</strong><small>{document.originalFileName || "PDF archiviert"}</small></td>
+              <td><strong>{control?.report.invoiceNumber || metadataText(document, "invoiceNumber") || document.documentNumber}</strong><small>{document.originalFileName || "PDF archiviert"}</small></td>
               <td>{formatCurrency(total)}</td>
-              <td>{formatCurrency(ledgerTotal)}<small>{metadataNumber(document, "recognizedLedgerEntries")} Buchung(en)</small></td>
+              <td>{formatCurrency(ledgerTotal)}<small>{control?.recognizedEntries || 0} Tagesbuchung(en)</small></td>
               <td className={matched ? "money-positive" : "money-negative"}><strong>{difference > 0 ? "+" : ""}{formatCurrency(difference)}</strong></td>
-              <td>{formatCurrency(metadataNumber(document, "commissionGross"))}<small>MwSt. {formatCurrency(metadataNumber(document, "commissionVat"))}</small></td>
-              <td>{formatCurrency(metadataNumber(document, "payableAmount"))}</td>
+              <td>{formatCurrency(control?.report.commissionGross || metadataNumber(document, "commissionGross"))}<small>MwSt. {formatCurrency(control?.report.commissionVat || metadataNumber(document, "commissionVat"))}</small></td>
+              <td>{formatCurrency(control?.report.payableAmount || metadataNumber(document, "payableAmount"))}</td>
               <td><Badge tone={matched ? "success" : "warning"}>{matched ? "Abgeglichen" : "Differenz prüfen"}</Badge></td>
             </tr>;
           })}</tbody>
@@ -262,19 +275,12 @@ export function AccountsPage() {
     <PayPalTransactionReviewModal transaction={selectedTransaction?.accountType === "paypal" ? selectedTransaction : undefined} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
     <BankTransactionReviewModal transaction={selectedTransaction?.accountType === "bank" ? selectedTransaction : undefined} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
     <FlatpayReportImportModal open={flatpayOpen} onClose={() => setFlatpayOpen(false)} onImported={setMessage} />
+    <UnitelDailyImportModal open={unitelDailyOpen} onClose={() => setUnitelDailyOpen(false)} onImported={setMessage} />
     <UnitelReportImportModal open={unitelOpen} onClose={() => setUnitelOpen(false)} onImported={setMessage} />
   </div>;
 }
 
-function TransactionRow({
-  item,
-  document,
-  onReview,
-}: {
-  item: ImportedTransaction;
-  document?: BusinessDocument;
-  onReview: () => void;
-}) {
+function TransactionRow({ item, document, onReview }: { item: ImportedTransaction; document?: BusinessDocument; onReview: () => void }) {
   const paypalInternal = item.accountType === "paypal" && isInternalTransfer(item);
   const bankInternal = isBankInternalTransaction(item);
   const internal = paypalInternal || bankInternal;
@@ -300,14 +306,7 @@ function TransactionRow({
 }
 
 function transactionTypeLabel(type?: ImportedTransactionType) {
-  return ({
-    payment: "Zahlung",
-    refund: "Rückzahlung",
-    bankFunding: "Bank → PayPal",
-    bankWithdrawal: "PayPal → Bank",
-    fee: "Gebühr",
-    other: "Umsatz",
-  } as const)[type || "other"];
+  return ({ payment: "Zahlung", refund: "Rückzahlung", bankFunding: "Bank → PayPal", bankWithdrawal: "PayPal → Bank", fee: "Gebühr", other: "Umsatz" } as const)[type || "other"];
 }
 
 function statusLabel(item: ImportedTransaction, internal: boolean) {
@@ -319,13 +318,7 @@ function documentTypeLabel(document: BusinessDocument) {
   if (document.metadata?.reportKind === "Kontoauszug") return "Kontoauszug";
   if (document.metadata?.provider === "Flatpay") return "Umsatzbericht";
   if (document.metadata?.provider === "UniTel") return "UniTel-Abrechnung";
-  return ({
-    invoice: "Rechnung",
-    receipt: "Quittung",
-    purchaseContract: "Ankaufvertrag",
-    supplierInvoice: "Eingangsrechnung",
-    zReport: "Tagesabschluss",
-  } as const)[document.type];
+  return ({ invoice: "Rechnung", receipt: "Quittung", purchaseContract: "Ankaufvertrag", supplierInvoice: "Eingangsrechnung", zReport: "Tagesabschluss" } as const)[document.type];
 }
 
 function metadataNumber(document: BusinessDocument, key: string): number {

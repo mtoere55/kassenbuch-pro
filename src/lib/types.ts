@@ -21,6 +21,7 @@ export type LedgerSource =
   | "bankImport"
   | "paypalImport"
   | "flatpayImport"
+  | "unitelImport"
   | "kasImport"
   | "manual";
 export type ImportedTransactionType =

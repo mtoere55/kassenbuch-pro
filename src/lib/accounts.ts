@@ -11,6 +11,7 @@ export const BOOKING_CATEGORIES: BookingCategory[] = [
   { code: "1200", label: "Bank", side: "neutral", vat: 0 },
   { code: "1360", label: "Geldtransit und Karte", side: "neutral", vat: 0 },
   { code: "1370", label: "PayPal", side: "neutral", vat: 0 },
+  { code: "1590", label: "Durchlaufende Posten / UniTel", side: "neutral", vat: 0 },
   { code: "1800", label: "Privatentnahme", side: "neutral", vat: 0 },
   { code: "1890", label: "Privateinlage", side: "neutral", vat: 0 },
   { code: "2740", label: "Sonstige betriebliche Ertraege", side: "in", vat: 0 },
