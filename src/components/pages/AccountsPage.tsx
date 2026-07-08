@@ -23,6 +23,7 @@ import { Badge, Button, Card, EmptyState, PageHeader, StatCard } from "../ui";
 import { BankTransactionReviewModal } from "./BankTransactionReviewModal";
 import { FlatpayReportImportModal } from "./FlatpayReportImportModal";
 import { PayPalTransactionReviewModal } from "./PayPalTransactionReviewModal";
+import { UnitelReportImportModal } from "./UnitelReportImportModal";
 
 const MAX_INLINE_PDF_BYTES = 3 * 1024 * 1024;
 
@@ -32,6 +33,7 @@ export function AccountsPage() {
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string>();
   const [flatpayOpen, setFlatpayOpen] = useState(false);
+  const [unitelOpen, setUnitelOpen] = useState(false);
   const [bankPdfLoading, setBankPdfLoading] = useState(false);
   const bankCsvInput = useRef<HTMLInputElement>(null);
   const bankPdfInput = useRef<HTMLInputElement>(null);
@@ -140,6 +142,10 @@ export function AccountsPage() {
   const flatpayReports = state.documents.filter(
     (document) => document.type === "zReport" && document.metadata?.provider === "Flatpay",
   );
+  const unitelReports = state.documents
+    .filter((document) => document.type === "zReport" && document.metadata?.provider === "UniTel")
+    .sort((left, right) => right.date.localeCompare(left.date));
+  const unitelMatched = unitelReports.filter((document) => document.metadata?.matchedExistingLedger === true).length;
   const sortedTransactions = useMemo(
     () =>
       [...state.importedTransactions].sort((left, right) =>
@@ -150,7 +156,7 @@ export function AccountsPage() {
 
   return <div>
     <PageHeader
-      title="Bank, PayPal & Flatpay"
+      title="Bank, PayPal, Flatpay & UniTel"
       subtitle="PDF- und CSV-Kontobewegungen importieren, automatisch buchen und mit Belegen abgleichen."
       actions={<div className="document-actions"><Button variant="secondary" onClick={reconcile}>Automatisch abgleichen</Button><Button onClick={prepareBookkeeping}>PayPal-Buchhaltung erstellen</Button></div>}
     />
@@ -190,6 +196,15 @@ export function AccountsPage() {
         </div>
         <Button variant="secondary" icon="upload" onClick={() => setFlatpayOpen(true)}>Flatpay-PDF importieren</Button>
       </Card>
+      <Card className="account-card">
+        <div className="account-logo bank">U</div>
+        <div>
+          <h2>UniTel Guthaben-Kontrolle</h2>
+          <p>Monatsabrechnung auslesen, Provision prüfen und mit erkannten UniTel-/Guthaben-Buchungen vergleichen. Keine Doppelbuchung.</p>
+          <div className="account-meta"><Badge tone="info">{unitelReports.length} Abrechnungen</Badge><Badge tone="success">{unitelMatched} passend</Badge><Badge tone={unitelReports.length - unitelMatched ? "warning" : "success"}>{unitelReports.length - unitelMatched} Differenzen</Badge></div>
+        </div>
+        <Button variant="secondary" icon="upload" onClick={() => setUnitelOpen(true)}>UniTel-PDF prüfen</Button>
+      </Card>
     </div>
     {paypalCount ? <div className="stat-grid">
       <StatCard label="PayPal-Zeilen" value={String(paypalCount)} detail={`${paypalInternal} interne Umbuchungen`} />
@@ -197,6 +212,32 @@ export function AccountsPage() {
       <StatCard label="Noch prüfen" value={String(paypalReview)} tone="negative" detail={`${paypalMatched} mit Beleg zugeordnet`} />
       <StatCard label="PayPal-Gebühren" value={formatCurrency(paypalFees)} tone="blue" detail="Entgelt aus CSV" />
     </div> : null}
+    {unitelReports.length ? <Card>
+      <div className="card-heading"><div><h2>UniTel Monatskontrolle</h2><p>Archivierte Monatsabrechnungen und der beim Import erkannte Kassenbuch-Abgleich. Die PDF erzeugt keine zusätzliche Umsatzbuchung.</p></div></div>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Zeitraum</th><th>Rechnung</th><th>Guthaben Gesamt</th><th>Kassenbuch erkannt</th><th>Differenz</th><th>Provision Brutto</th><th>An UniTel</th><th>Status</th></tr></thead>
+          <tbody>{unitelReports.map((document) => {
+            const periodStart = metadataText(document, "periodStart");
+            const periodEnd = metadataText(document, "periodEnd");
+            const total = metadataNumber(document, "totalCardValue");
+            const ledgerTotal = metadataNumber(document, "recognizedLedgerTotal");
+            const difference = metadataNumber(document, "difference");
+            const matched = document.metadata?.matchedExistingLedger === true;
+            return <tr key={document.id}>
+              <td>{periodStart && periodEnd ? `${formatDate(periodStart)} – ${formatDate(periodEnd)}` : formatDate(document.date)}</td>
+              <td><strong>{metadataText(document, "invoiceNumber") || document.documentNumber}</strong><small>{document.originalFileName || "PDF archiviert"}</small></td>
+              <td>{formatCurrency(total)}</td>
+              <td>{formatCurrency(ledgerTotal)}<small>{metadataNumber(document, "recognizedLedgerEntries")} Buchung(en)</small></td>
+              <td className={matched ? "money-positive" : "money-negative"}><strong>{difference > 0 ? "+" : ""}{formatCurrency(difference)}</strong></td>
+              <td>{formatCurrency(metadataNumber(document, "commissionGross"))}<small>MwSt. {formatCurrency(metadataNumber(document, "commissionVat"))}</small></td>
+              <td>{formatCurrency(metadataNumber(document, "payableAmount"))}</td>
+              <td><Badge tone={matched ? "success" : "warning"}>{matched ? "Abgeglichen" : "Differenz prüfen"}</Badge></td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>
+    </Card> : null}
     <Card>
       <div className="card-heading"><div><h2>Kontobewegungen</h2><p>Flatpay-Auszahlungen, Bargeldeinzahlungen und PayPal-Bankbelastungen werden als Umbuchungen behandelt, nicht als doppelte Einnahmen oder Ausgaben.</p></div></div>
       {sortedTransactions.length === 0 ? (
@@ -221,6 +262,7 @@ export function AccountsPage() {
     <PayPalTransactionReviewModal transaction={selectedTransaction?.accountType === "paypal" ? selectedTransaction : undefined} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
     <BankTransactionReviewModal transaction={selectedTransaction?.accountType === "bank" ? selectedTransaction : undefined} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
     <FlatpayReportImportModal open={flatpayOpen} onClose={() => setFlatpayOpen(false)} onImported={setMessage} />
+    <UnitelReportImportModal open={unitelOpen} onClose={() => setUnitelOpen(false)} onImported={setMessage} />
   </div>;
 }
 
@@ -276,6 +318,7 @@ function statusLabel(item: ImportedTransaction, internal: boolean) {
 function documentTypeLabel(document: BusinessDocument) {
   if (document.metadata?.reportKind === "Kontoauszug") return "Kontoauszug";
   if (document.metadata?.provider === "Flatpay") return "Umsatzbericht";
+  if (document.metadata?.provider === "UniTel") return "UniTel-Abrechnung";
   return ({
     invoice: "Rechnung",
     receipt: "Quittung",
@@ -283,6 +326,16 @@ function documentTypeLabel(document: BusinessDocument) {
     supplierInvoice: "Eingangsrechnung",
     zReport: "Tagesabschluss",
   } as const)[document.type];
+}
+
+function metadataNumber(document: BusinessDocument, key: string): number {
+  const value = document.metadata?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function metadataText(document: BusinessDocument, key: string): string {
+  const value = document.metadata?.[key];
+  return typeof value === "string" ? value : "";
 }
 
 function fileToDataUrl(file: File): Promise<string> {
