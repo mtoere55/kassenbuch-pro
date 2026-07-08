@@ -96,7 +96,7 @@ export function compareUnitelReportToLedger(
     entry.date <= report.periodEnd &&
     isUnitelLedgerEntry(entry),
   );
-  const ledgerTotal = roundMoney(entries.reduce((sum, entry) => sum + signedLedgerAmount(entry), 0));
+  const ledgerTotal = roundMoney(entries.reduce((sum, entry) => sum + unitelSalesAmount(entry), 0));
   const difference = roundMoney(report.totalCardValue - ledgerTotal);
   return {
     recognizedEntries: entries.length,
@@ -162,17 +162,20 @@ export function unitelFingerprint(report: UnitelMonthlyReport): string {
 }
 
 export function isUnitelLedgerEntry(entry: LedgerEntry): boolean {
+  if (entry.sourceId?.startsWith("unitel-sales:")) return true;
+  if (entry.source === "unitelImport") return false;
   const haystack = [entry.description, entry.category, entry.note, entry.documentNumber]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-  return /unitel|uni\s*tel|guthaben|cash\s*card|telefonkart/.test(haystack);
+  return !/provision/.test(haystack) && /unitel|uni\s*tel|guthaben|cash\s*card|telefonkart/.test(haystack);
 }
 
-function signedLedgerAmount(entry: LedgerEntry): number {
-  if (entry.direction === "income") return entry.amount;
+function unitelSalesAmount(entry: LedgerEntry): number {
+  if (entry.sourceId?.startsWith("unitel-sales:")) return entry.amount;
+  if (entry.direction === "income" || entry.direction === "transfer") return entry.amount;
   if (entry.direction === "expense") return -entry.amount;
-  return typeof entry.cashChange === "number" ? entry.cashChange : 0;
+  return 0;
 }
 
 function labeledMoney(text: string, pattern: RegExp, label: string): number {
