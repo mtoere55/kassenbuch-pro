@@ -29,7 +29,7 @@ Implemented in the current local-first system:
 
 Open, not merged:
 
-- PR #15 / `m14-july-controls`: July bookkeeping workflow, supplier rules, internal numbering, owner settings, special settlement bookings and document creation from existing income. This branch diverged from `main` and must not be merged blindly.
+- PR #15 / `m14-july-controls`: July bookkeeping workflow, supplier rules, internal numbering, owner settings, special settlement bookings and document creation from existing income. It is retargeted to `main` only to show the real current difference. It must not be merged blindly; useful parts should be rebuilt or cherry-picked onto a fresh branch from current `main`.
 
 ## Next safe local-first milestones
 
