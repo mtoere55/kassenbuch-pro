@@ -54,11 +54,12 @@
   body.ledger-printing .sidebar,
   body.ledger-printing .mobile-topbar,
   body.ledger-printing .page-header,
-  body.ledger-printing .content > :not(.ledger-print-source),
   body.ledger-printing .modal-backdrop { display: none !important; }
   body.ledger-printing .main-area { margin: 0 !important; }
   body.ledger-printing .content { display: block !important; max-width: none !important; width: 100% !important; padding: 0 !important; margin: 0 !important; }
-  body.ledger-printing .content > .ledger-print-source { display: block !important; }
+  body.ledger-printing .content > * { display: block !important; }
+  body.ledger-printing .content > * > :not(.ledger-print-source) { display: none !important; }
+  body.ledger-printing .content .ledger-print-source { display: block !important; }
   body.ledger-printing .ledger-print-document { padding: 10mm; min-height: 0; }
   .modal .screen-only { display: none !important; }
   .modal .print-only { display: block !important; }
