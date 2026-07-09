@@ -53,7 +53,12 @@ export function createBookingDraft(kind: ManualBookingKind = "income", date = to
 }
 
 export function parseMoney(value: string): number {
-  const parsed = Number(value.replace(",", "."));
+  const normalized = value
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".");
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
