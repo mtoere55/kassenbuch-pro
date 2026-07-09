@@ -2,10 +2,13 @@
 .view-tabs button, .booking-kind-tabs button { border: 0; background: transparent; border-radius: 8px; min-height: 36px; padding: 0 15px; font-size: 12px; font-weight: 700; color: var(--muted); }
 .view-tabs button.active, .booking-kind-tabs button.active { background: white; color: var(--primary); box-shadow: 0 2px 8px rgba(23,32,42,.08); }
 .booking-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+.cashbook-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .ledger-toolbar > input[type="month"] { min-width: 155px; }
 .cashbook-table { min-width: 1320px; }
 .cashbook-table td { white-space: nowrap; }
 .cashbook-table td:nth-child(12) { white-space: normal; min-width: 220px; }
+.cashbook-row { cursor: pointer; outline: none; }
+.cashbook-row:hover, .cashbook-row:focus-visible { background: #f2faf8 !important; box-shadow: inset 3px 0 0 var(--primary); }
 .booking-kind-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px; background: var(--surface-3); border-radius: 11px; margin-bottom: 18px; }
 .booking-details { margin-top: 15px; }
 .textarea { min-height: 78px; padding-top: 10px; resize: vertical; }
@@ -15,4 +18,49 @@
 .split-total { display: flex; justify-content: flex-end; gap: 18px; padding: 10px 3px 0; font-size: 12px; }
 .split-total.ok strong { color: var(--green); }
 .split-total.warning strong { color: var(--red); }
-@media (max-width: 760px) { .booking-kind-tabs { grid-template-columns: repeat(2, 1fr); } .booking-options { grid-template-columns: 1fr; } .split-row { grid-template-columns: 1fr; border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 12px; } }
+.entry-card-head { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
+.entry-card-head > div { border: 1px solid var(--line); background: var(--surface-2); border-radius: 11px; padding: 12px; }
+.entry-card-head small, .entry-card-head strong { display: block; }
+.entry-card-head small { color: var(--muted); font-size: 10px; margin-bottom: 5px; }
+.entry-card-head strong { font-size: 14px; }
+.ledger-print-source, .print-only { display: none; }
+.ledger-print-document { background: white; color: #111; font-family: Arial, sans-serif; padding: 18mm; }
+.ledger-print-head { display: flex; justify-content: space-between; gap: 20mm; border-bottom: 2px solid #111; padding-bottom: 8mm; margin-bottom: 6mm; }
+.ledger-print-head h1 { margin: 0; font-size: 22pt; }
+.ledger-print-head p { margin: 3mm 0 0; font-size: 11pt; }
+.ledger-print-head span, .ledger-print-head strong { display: block; font-size: 9pt; line-height: 1.45; text-align: right; }
+.ledger-print-summary { display: grid; grid-template-columns: repeat(6, 1fr); border: 1px solid #222; margin-bottom: 6mm; }
+.ledger-print-summary > div { padding: 3mm; border-right: 1px solid #999; }
+.ledger-print-summary > div:last-child { border-right: 0; }
+.ledger-print-summary span, .ledger-print-summary strong { display: block; }
+.ledger-print-summary span { font-size: 7pt; color: #444; }
+.ledger-print-summary strong { margin-top: 1mm; font-size: 10pt; }
+.ledger-print-table { width: 100%; border-collapse: collapse; font-size: 7.5pt; }
+.ledger-print-table th { text-align: left; border-bottom: 1px solid #222; padding: 2mm 1.3mm; }
+.ledger-print-table td { border-bottom: 1px solid #ddd; padding: 2mm 1.3mm; vertical-align: top; }
+.ledger-print-table small { display: block; color: #555; margin-top: 1mm; font-size: 6.5pt; }
+.entry-print-card { background: white; color: #111; font-family: Arial, sans-serif; padding: 12mm; }
+
+@media (max-width: 760px) {
+  .booking-kind-tabs { grid-template-columns: repeat(2, 1fr); }
+  .booking-options { grid-template-columns: 1fr; }
+  .split-row { grid-template-columns: 1fr; border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 12px; }
+  .cashbook-actions { width: 100%; justify-content: stretch; }
+  .cashbook-actions .button { flex: 1 1 48%; }
+  .entry-card-head { grid-template-columns: 1fr; }
+}
+
+@media print {
+  body.ledger-printing .sidebar,
+  body.ledger-printing .mobile-topbar,
+  body.ledger-printing .page-header,
+  body.ledger-printing .content > :not(.ledger-print-source),
+  body.ledger-printing .modal-backdrop { display: none !important; }
+  body.ledger-printing .main-area { margin: 0 !important; }
+  body.ledger-printing .content { display: block !important; max-width: none !important; width: 100% !important; padding: 0 !important; margin: 0 !important; }
+  body.ledger-printing .content > .ledger-print-source { display: block !important; }
+  body.ledger-printing .ledger-print-document { padding: 10mm; min-height: 0; }
+  .modal .screen-only { display: none !important; }
+  .modal .print-only { display: block !important; }
+  .entry-print-card { padding: 0; }
+}
