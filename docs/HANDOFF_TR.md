@@ -61,6 +61,9 @@ Ana modüller:
 - IndexedDB attachment storage: büyük PDF/resim/OCR verileri localStorage yerine IndexedDB tarafına ayrılıyor
 - UniTel Monatsabrechnung kontrol sistemi
 - UniTel / Pin-Sales günlük Guthaben importu
+- Kassenbuch yazdırma akışı: `Drucken`, `Drucken mit Belegen`, `CSV-Datei`
+- Kassenbuch satırına tıklayınca `Buchung bearbeiten` kartı açılır; tarih, art, Buchungskonto, Zahlungsart, Betrag, MwSt., Beleg, Text ve Notiz düzenlenebilir
+- Kassenbuch Konto kolonu artık cash/account ana hesabı yerine karşı hesap mantığıyla gösterilir; UniTel bar satırında `1590 · Durchlaufende Posten / UniTel` görünmelidir
 
 ## UniTel günlük Pin-Sales importu
 
@@ -137,6 +140,7 @@ Bu branch `main`den ayrışmış durumda. Direkt merge edilmemeli. Gerekirse fay
 4. Haziran Monats-PDF gelince Haziran kontrolü de yapılacak.
 5. Bar/Karte ayrımı bilinmiyorsa kullanıcı Z-Bericht/Flatpay ile gün bazında ayıracak.
 6. PR #15 içindeki faydalı işler, main üzerine güvenli şekilde yeniden kurulacak.
+7. Kassenbuch yazdırma ve satır düzenleme test edilecek: satıra tıkla, `Buchung bearbeiten` açılıyor mu; `Drucken` temiz çıktı veriyor mu; `CSV-Datei` indiriyor mu.
 
 ## Cevap stili
 
