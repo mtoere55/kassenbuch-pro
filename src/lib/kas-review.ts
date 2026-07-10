@@ -42,6 +42,7 @@ export function ledgerSourceLabel(entry: LedgerEntry): string {
     paypalImport: "PayPal-Import",
     flatpayImport: "Flatpay-Import",
     unitelImport: "UniTel-Import",
+    prifotoImport: "Prifoto-Import",
     kasImport: "KAS-Import",
     manual: "Manuell",
   } as const)[entry.source];
@@ -151,6 +152,6 @@ function inferTaxMode(code: string, label: string, taxRate: number): TaxMode {
   return taxRate > 0 ? "standard19" : "taxFree";
 }
 
-function roundMoney(value: number): number {
+function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
