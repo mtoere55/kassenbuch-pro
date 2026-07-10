@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { isValidImei, normalizeImei, todayIso } from "@/lib/accounting";
+import { getImeiValidationMessage, normalizeImei, todayIso } from "@/lib/accounting";
 import { useKassenStore } from "@/lib/store";
 import type { Device, PaymentMethod, TaxMode } from "@/lib/types";
 import { CustomerModal } from "../CustomerModal";
@@ -51,7 +51,10 @@ export function PurchasePage() {
     setError("");
     if (!customerId) return setError("Für einen Ankauf muss ein Verkäufer ausgewählt werden.");
     if (!brand.trim() || !model.trim()) return setError("Bitte Marke und Modell eingeben.");
-    if (!isValidImei(imei1)) return setError("Die IMEI muss aus 15 gültigen Ziffern bestehen.");
+    const imei1Error = getImeiValidationMessage(imei1, "IMEI 1");
+    if (imei1Error) return setError(imei1Error);
+    const imei2Error = imei2 ? getImeiValidationMessage(imei2, "IMEI 2") : undefined;
+    if (imei2Error) return setError(imei2Error);
     const numericPrice = Number(price.replace(",", "."));
     if (!Number.isFinite(numericPrice) || numericPrice <= 0) return setError("Bitte einen gültigen Ankaufspreis eingeben.");
     try {
@@ -130,7 +133,7 @@ export function PurchasePage() {
             <Field label="Zustand"><Select value={condition} onChange={(event) => setCondition(event.target.value as Device["condition"])}><option value="new">Neu</option><option value="veryGood">Sehr gut</option><option value="good">Gut</option><option value="used">Gebraucht</option><option value="defective">Defekt</option></Select></Field>
             <Field label="Marke"><Input placeholder="z. B. Apple" value={brand} onChange={(event) => setBrand(event.target.value)} /></Field>
             <Field label="Modell"><Input placeholder="z. B. iPhone 13" value={model} onChange={(event) => setModel(event.target.value)} /></Field>
-            <Field label="IMEI 1" hint="15-stellig; Dubletten werden blockiert."><Input inputMode="numeric" value={imei1} onChange={(event) => setImei1(normalizeImei(event.target.value))} /></Field>
+            <Field label="IMEI 1" hint="15-stellig; Prüfziffer und Dubletten werden geprüft."><Input inputMode="numeric" value={imei1} onChange={(event) => setImei1(normalizeImei(event.target.value))} /></Field>
             <Field label="IMEI 2"><Input inputMode="numeric" value={imei2} onChange={(event) => setImei2(normalizeImei(event.target.value))} /></Field>
             <Field label="Seriennummer"><Input value={serialNumber} onChange={(event) => setSerialNumber(event.target.value)} /></Field>
             <Field label="Speicher"><Input placeholder="128 GB" value={storage} onChange={(event) => setStorage(event.target.value)} /></Field>
