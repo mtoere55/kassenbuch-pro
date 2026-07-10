@@ -30,11 +30,20 @@ export function PrifotoReportImportModal({
   const [report, setReport] = useState<PrifotoSalesReport>();
   const [mode, setMode] = useState<AllocationMode>("");
   const [manualCash, setManualCash] = useState<Record<string, string>>({});
+  const [prifotoShare, setPrifotoShare] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
 
   const validation = useMemo(() => report ? validatePrifotoSalesReport(report) : undefined, [report]);
+  const prifotoShareAmount = parseDecimal(prifotoShare);
+  const ownShareAmount = report ? roundMoney(report.totalSales - prifotoShareAmount) : 0;
+  const shareValid = Boolean(
+    report &&
+    Number.isFinite(prifotoShareAmount) &&
+    prifotoShareAmount >= 0 &&
+    prifotoShareAmount <= report.totalSales + 0.02,
+  );
   const allocation = useMemo(() => {
     if (!report || !mode) return undefined;
     const result: Record<string, number> = {};
@@ -68,6 +77,7 @@ export function PrifotoReportImportModal({
     setReport(undefined);
     setMode("");
     setManualCash({});
+    setPrifotoShare("");
     setLoading(true);
     try {
       const probablyPdf = selected.type === "application/pdf" || selected.name.toLowerCase().endsWith(".pdf") || /prifoto|tagesver/i.test(selected.name);
@@ -79,6 +89,7 @@ export function PrifotoReportImportModal({
       const parsed = parsePrifotoSalesReport(text);
       setFile(selected);
       setReport(parsed);
+      setPrifotoShare(formatInput(roundMoney(parsed.totalSales / 2)));
       setManualCash(Object.fromEntries(parsed.days.map((day) => [day.date, ""])));
       setInfo(
         result.pageImages.length
@@ -93,19 +104,20 @@ export function PrifotoReportImportModal({
   }
 
   async function save() {
-    if (!report || !file || !allocation || !allocationValid || !validation?.valid) return;
+    if (!report || !file || !allocation || !allocationValid || !validation?.valid || !shareValid) return;
     setError("");
     try {
       const dataUrl = file.size <= MAX_INLINE_BYTES ? await fileToDataUrl(file) : undefined;
-      const plan = createPrifotoImportPlan(state, report, allocation, file.name, dataUrl);
+      const plan = createPrifotoImportPlan(state, report, allocation, prifotoShareAmount, file.name, dataUrl);
       replaceState({
         ...state,
         documents: [plan.document, ...state.documents],
         ledger: [...plan.entries, ...state.ledger],
       });
       onImported(
-        `Prifoto ${report.periodLabel} wurde übernommen: ${formatCurrency(cashTotal)} bar und ${formatCurrency(cardTotal)} Karte. ` +
-          `${plan.entries.length} Tagesbuchung(en) wurden erstellt; das PDF wurde archiviert.`,
+        `Prifoto ${report.periodLabel} wurde übernommen: Kundenzahlungen ${formatCurrency(report.totalSales)}, ` +
+          `Prifoto-Anteil ${formatCurrency(plan.prifotoShareGross)}, eigener Bruttoanteil ${formatCurrency(plan.ownShareGross)}. ` +
+          `${plan.clearingEntries} Clearing-Buchung(en) und ${plan.revenueEntries} Erlösbuchung(en) wurden erstellt.`,
       );
       reset();
       onClose();
@@ -119,6 +131,7 @@ export function PrifotoReportImportModal({
     setReport(undefined);
     setMode("");
     setManualCash({});
+    setPrifotoShare("");
     setLoading(false);
     setError("");
     setInfo("");
@@ -138,7 +151,7 @@ export function PrifotoReportImportModal({
       footer={
         <>
           <Button variant="secondary" onClick={close}>Abbrechen</Button>
-          <Button disabled={!allocationValid || loading || !validation?.valid} onClick={() => void save()}>
+          <Button disabled={!allocationValid || !shareValid || loading || !validation?.valid} onClick={() => void save()}>
             Tagesverkäufe buchen
           </Button>
         </>
@@ -146,7 +159,7 @@ export function PrifotoReportImportModal({
     >
       <div className="form-stack">
         <div className="alert alert-info">
-          Der Prifoto-Umsatzbericht wird ausgelesen, Tagesumsätze werden geprüft und als tägliche Sammelbuchungen mit 19 % USt übernommen. Wenn die PDF keine Zahlungsart trennt, muss Bar/Karte vor dem Import bestätigt werden.
+          Detail-Abrechnung beachten: Kundenzahlungen werden zuerst als Prifoto-Clearing gebucht. Nur der eigene Anteil wird als 19-%-Erlös gebucht. Der Anteil Prifoto muss aus der Abrechnungsübersicht übernommen werden.
         </div>
         {error ? <div className="alert alert-danger">{error}</div> : null}
         {info ? <div className="alert alert-success">{info}</div> : null}
@@ -158,10 +171,22 @@ export function PrifotoReportImportModal({
         {report ? (
           <>
             <div className="stat-grid">
-              <StatCard label="Gesamtumsatz" value={formatCurrency(report.totalSales)} detail={`${formatDate(report.startDate)} – ${formatDate(report.endDate)}`} />
+              <StatCard label="Kundenzahlungen" value={formatCurrency(report.totalSales)} detail={`${formatDate(report.startDate)} – ${formatDate(report.endDate)}`} />
+              <StatCard label="Anteil Prifoto" value={formatCurrency(prifotoShareAmount)} tone="negative" detail="laut Detail-Abrechnung" />
+              <StatCard label="Eigener Bruttoanteil" value={formatCurrency(ownShareAmount)} tone="positive" detail="als 19-%-Erlös" />
               <StatCard label="Bestellungen" value={String(report.orderCount)} tone="blue" detail={`${report.days.length} Verkaufstage`} />
-              <StatCard label="Tagesdurchschnitt" value={formatCurrency(report.dailyAverage)} detail={report.periodLabel} />
-              <StatCard label="Bester Tag" value={formatCurrency(report.bestDayAmount)} tone="positive" detail={report.bestDay} />
+            </div>
+
+            <Field label="Anteil Prifoto / Gesamtbetrag Brutto" hint="Aus der Detail-Abrechnung. Beim aktuellen PDF: 240,00 €.">
+              <Input inputMode="decimal" value={prifotoShare} onChange={(event) => setPrifotoShare(event.target.value)} />
+            </Field>
+            {!shareValid ? <div className="alert alert-danger">Der Prifoto-Anteil muss zwischen 0,00 € und {formatCurrency(report.totalSales)} liegen.</div> : null}
+
+            <div className="calculation-box">
+              <h3>Prifoto-Buchungslogik</h3>
+              <div><span>Kundenzahlungen ins Clearing 1592</span><strong>{formatCurrency(report.totalSales)}</strong></div>
+              <div><span>Davon an Prifoto / bleibt als Verbindlichkeit</span><strong>{formatCurrency(prifotoShareAmount)}</strong></div>
+              <div><span>Eigener Bruttoerlös 8400</span><strong>{formatCurrency(ownShareAmount)}</strong></div>
             </div>
 
             <div className="card-heading">
@@ -180,7 +205,7 @@ export function PrifotoReportImportModal({
               <div className="alert alert-warning">Bitte „Alles bar“, „Alles Karte“ oder „Tagesweise aufteilen“ auswählen.</div>
             ) : (
               <div className="calculation-box">
-                <h3>Aufteilung</h3>
+                <h3>Aufteilung Kundenzahlungen</h3>
                 <div><span>Bar / Kassenwirkung</span><strong>{formatCurrency(cashTotal)}</strong></div>
                 <div><span>Karte / Geldtransit</span><strong>{formatCurrency(cardTotal)}</strong></div>
                 <div><span>Gesamt</span><strong>{formatCurrency(cashTotal + cardTotal)} / {formatCurrency(report.totalSales)}</strong></div>
@@ -189,7 +214,7 @@ export function PrifotoReportImportModal({
 
             <div className="table-wrap">
               <table className="data-table">
-                <thead><tr><th>Datum</th><th>Wochentag</th><th>Bestellungen</th><th>Umsatz</th><th>Bar</th><th>Karte</th></tr></thead>
+                <thead><tr><th>Datum</th><th>Wochentag</th><th>Bestellungen</th><th>Kundenzahlung</th><th>Bar</th><th>Karte</th></tr></thead>
                 <tbody>{report.days.map((day) => {
                   const cash = allocation?.[day.date] || 0;
                   const card = roundMoney(day.amount - cash);
@@ -242,6 +267,10 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function formatInput(value: number): string {
+  return value.toFixed(2).replace(".", ",");
 }
 
 function roundMoney(value: number): number {
