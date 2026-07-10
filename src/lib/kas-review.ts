@@ -37,6 +37,7 @@ export function ledgerSourceLabel(entry: LedgerEntry): string {
   return ({
     sale: "Verkauf",
     purchase: "Ankauf",
+    repair: "Reparatur",
     scan: "Scanner",
     bankImport: "Bank-Import",
     paypalImport: "PayPal-Import",
