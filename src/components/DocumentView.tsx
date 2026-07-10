@@ -1,14 +1,12 @@
 "use client";
 
 import { formatCurrency, formatDate } from "@/lib/accounting";
+import { printFirst } from "@/lib/print";
 import { useKassenStore } from "@/lib/store";
 import type { BusinessDocument } from "@/lib/types";
 
 export function printDocumentView() {
-  document.body.classList.add("document-printing");
-  const cleanup = () => document.body.classList.remove("document-printing");
-  window.addEventListener("afterprint", cleanup, { once: true });
-  window.setTimeout(() => window.print(), 80);
+  printFirst(".modal .print-document, .print-document", "Kassenbuch Pro Dokument");
 }
 
 export function DocumentView({ document }: { document: BusinessDocument }) {
@@ -28,7 +26,7 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
             : "Eingangsrechnung";
 
   return (
-    <article className="print-document">
+    <article className="print-document" data-print-kind="business-document">
       <header className="document-head">
         <div>
           <div className="document-brand">{settings.businessName}</div>
