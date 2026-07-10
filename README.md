@@ -15,6 +15,7 @@ It combines the daily shop workflow in one simple interface:
 - detailed PayPal CSV import with fees, refunds and bank-transfer separation
 - Sparkasse bank CSV/PDF import with statement reconciliation
 - Flatpay Umsatzbericht PDF import and reconciliation
+- Prifoto Tagesverkäufe PDF import with daily 19% VAT sales entries
 - UniTel / Pin-Sales daily Guthaben import plus monthly PDF control
 - printable invoices, receipts and purchase contracts
 - local JSON backup and restore
@@ -39,8 +40,9 @@ Implemented end-to-end workflows:
 9. Import PayPal CSV exports with gross, fee, net, refunds, bank funding and PayPal-to-bank withdrawals.
 10. Import Sparkasse bank PDFs/CSVs and keep own-account transfers separate from revenue.
 11. Import Flatpay Umsatzbericht PDFs and reconcile them against ledger entries.
-12. Import UniTel / Pin-Sales daily Guthaben lists as daily clearing totals, then control them with monthly UniTel PDFs.
-13. Print documents and export/import the complete local dataset.
+12. Import Prifoto Tagesverkäufe PDFs as daily 19% VAT sales totals with cash/card allocation.
+13. Import UniTel / Pin-Sales daily Guthaben lists as daily clearing totals, then control them with monthly UniTel PDFs.
+14. Print documents and export/import the complete local dataset.
 
 Open work that is **not** part of current `main` yet:
 
@@ -58,6 +60,18 @@ UniTel Guthaben sales are treated as clearing money, not full revenue.
 - Monthly UniTel PDFs are control/archive documents and do not create duplicate daily sales.
 
 See [`docs/unitel-daily-import.md`](docs/unitel-daily-import.md).
+
+## Prifoto accounting rule
+
+Prifoto Tagesverkäufe are treated as normal 19% VAT sales revenue.
+
+- The PDF is read automatically from **Bank & PayPal → Prifoto Tagesverkäufe → Prifoto-PDF importieren**.
+- Daily sales rows are checked against the monthly total and order count.
+- The user must confirm whether sales are all cash, all card, or split by day.
+- Cash sales increase `1000 · Kasse`.
+- Card sales use `1360 · Geldtransit und Karte`.
+- Sales are posted to `8400 · Erlöse 19 Prozent / Prifoto` with 19% VAT.
+- The PDF is archived and duplicate imports are blocked by fingerprint.
 
 ## Important scope boundary
 
@@ -171,6 +185,7 @@ docs/                    architecture, product, import and compliance decisions
 - transfers are not automatically treated as new sales in the domain design
 - UniTel daily imports are grouped into daily clearing entries, not hundreds of product ledger rows
 - UniTel monthly PDFs are archive/control documents and reconcile live against current ledger entries
+- Prifoto daily sales reports are grouped by day and posted as 19% VAT sales entries
 
 ## Product direction
 
@@ -180,6 +195,7 @@ Kassenbuch Pro is designed to become a commercial subscription product for:
 - phone repair stores
 - tablet, computer and console retailers
 - telecom/prepaid/Guthaben shops
+- photo/passport-photo service points
 - small second-hand electronics businesses
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged production plan.
