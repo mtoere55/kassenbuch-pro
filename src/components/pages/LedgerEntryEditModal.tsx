@@ -69,7 +69,7 @@ export function LedgerEntryEditModal({ entry, onClose, onSaved }: Props) {
         amount,
         paymentMethod: draft.paymentMethod,
         description: draft.description.trim() || bookingLabel,
-        category: isTransfer ? `${draft.bookingAccountCode} · ${bookingLabel}` : `${draft.bookingAccountCode} · ${bookingLabel}`,
+        category: `${draft.bookingAccountCode} · ${bookingLabel}`,
         taxAmount: updatedTaxAmount,
         taxRate: draft.taxRate,
         taxMode: nextTaxMode,
@@ -104,6 +104,18 @@ export function LedgerEntryEditModal({ entry, onClose, onSaved }: Props) {
     }
   }
 
+  function deleteEntry() {
+    if (!entry) return;
+    const ok = window.confirm("Diese Buchung wirklich löschen? Der gespeicherte Beleg/PDF bleibt im Archiv erhalten.");
+    if (!ok) return;
+    replaceState({
+      ...state,
+      ledger: state.ledger.filter((item) => item.id !== entry.id),
+    });
+    onSaved("Buchung wurde gelöscht.");
+    onClose();
+  }
+
   function printCard() {
     window.print();
   }
@@ -116,6 +128,7 @@ export function LedgerEntryEditModal({ entry, onClose, onSaved }: Props) {
       wide
       footer={
         <Fragment>
+          <Button variant="danger" onClick={deleteEntry}>Buchung löschen</Button>
           <Button variant="secondary" icon="print" onClick={printCard}>Drucken</Button>
           <Button variant="secondary" onClick={onClose}>Schließen</Button>
           <Button onClick={save}>Änderung speichern</Button>
@@ -144,86 +157,22 @@ export function LedgerEntryEditModal({ entry, onClose, onSaved }: Props) {
           </div>
         ) : null}
         <div className="form-grid two">
-          <Field label="Datum">
-            <Input type="date" value={draft.date} onChange={(event) => patch("date", event.target.value)} />
-          </Field>
-          <Field label="Art">
-            <Select value={draft.direction} onChange={(event) => patch("direction", event.target.value as LedgerDirection)}>
-              <option value="income">Einnahme</option>
-              <option value="expense">Ausgabe</option>
-              <option value="transfer">Umbuchung / Fremdgeld</option>
-            </Select>
-          </Field>
-          <Field label="Buchungskonto" hint={isTransfer ? "Gegenkonto zur Kasse, z.B. 1590 UniTel Guthaben" : undefined}>
-            <Select value={draft.bookingAccountCode} onChange={(event) => patch("bookingAccountCode", event.target.value)}>
-              {accountOptions.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.label}</option>)}
-            </Select>
-          </Field>
-          <Field label="Zahlungsart">
-            <Select value={draft.paymentMethod} onChange={(event) => patch("paymentMethod", event.target.value as PaymentMethod)}>
-              <option value="cash">Bar / Kasse</option>
-              <option value="card">Karte</option>
-              <option value="bank">Bank</option>
-              <option value="paypal">PayPal</option>
-            </Select>
-          </Field>
-          <Field label="Betrag (Brutto)">
-            <Input inputMode="decimal" value={draft.amount} onChange={(event) => patch("amount", event.target.value)} />
-          </Field>
-          <Field label="MwSt.">
-            <Select value={draft.taxRate} onChange={(event) => patch("taxRate", Number(event.target.value))}>
-              <option value={19}>19 %</option>
-              <option value={7}>7 %</option>
-              <option value={0}>0 %</option>
-            </Select>
-          </Field>
-          <Field label="Beleg">
-            <Input value={draft.documentNumber} onChange={(event) => patch("documentNumber", event.target.value)} />
-          </Field>
-          <Field label="Text">
-            <Input value={draft.description} onChange={(event) => patch("description", event.target.value)} />
-          </Field>
+          <Field label="Datum"><Input type="date" value={draft.date} onChange={(event) => patch("date", event.target.value)} /></Field>
+          <Field label="Art"><Select value={draft.direction} onChange={(event) => patch("direction", event.target.value as LedgerDirection)}><option value="income">Einnahme</option><option value="expense">Ausgabe</option><option value="transfer">Umbuchung / Fremdgeld</option></Select></Field>
+          <Field label="Buchungskonto" hint={isTransfer ? "Gegenkonto zur Kasse, z.B. 1590 UniTel Guthaben" : undefined}><Select value={draft.bookingAccountCode} onChange={(event) => patch("bookingAccountCode", event.target.value)}>{accountOptions.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.label}</option>)}</Select></Field>
+          <Field label="Zahlungsart"><Select value={draft.paymentMethod} onChange={(event) => patch("paymentMethod", event.target.value as PaymentMethod)}><option value="cash">Bar / Kasse</option><option value="card">Karte</option><option value="bank">Bank</option><option value="paypal">PayPal</option></Select></Field>
+          <Field label="Betrag (Brutto)"><Input inputMode="decimal" value={draft.amount} onChange={(event) => patch("amount", event.target.value)} /></Field>
+          <Field label="MwSt."><Select value={draft.taxRate} onChange={(event) => patch("taxRate", Number(event.target.value))}><option value={19}>19 %</option><option value={7}>7 %</option><option value={0}>0 %</option></Select></Field>
+          <Field label="Beleg"><Input value={draft.documentNumber} onChange={(event) => patch("documentNumber", event.target.value)} /></Field>
+          <Field label="Text"><Input value={draft.description} onChange={(event) => patch("description", event.target.value)} /></Field>
         </div>
-        <div className="form-stack booking-details">
-          <Field label="Notiz">
-            <textarea className="input textarea" value={draft.note} onChange={(event) => patch("note", event.target.value)} />
-          </Field>
-        </div>
-        <div className="calculation-box">
-          <h3>Vorschau</h3>
-          <div><span>Brutto</span><strong>{formatCurrency(amount)}</strong></div>
-          <div><span>MwSt.</span><strong>{formatCurrency(taxAmount)}</strong></div>
-          <div><span>Netto</span><strong>{formatCurrency(roundMoney(amount - taxAmount))}</strong></div>
-          <div><span>Buchungskonto</span><strong>{draft.bookingAccountCode} · {bookingAccount?.label || accountLabelFromEntry(entry)}</strong></div>
-        </div>
+        <div className="form-stack booking-details"><Field label="Notiz"><textarea className="input textarea" value={draft.note} onChange={(event) => patch("note", event.target.value)} /></Field></div>
+        <div className="calculation-box"><h3>Vorschau</h3><div><span>Brutto</span><strong>{formatCurrency(amount)}</strong></div><div><span>MwSt.</span><strong>{formatCurrency(taxAmount)}</strong></div><div><span>Netto</span><strong>{formatCurrency(roundMoney(amount - taxAmount))}</strong></div><div><span>Buchungskonto</span><strong>{draft.bookingAccountCode} · {bookingAccount?.label || accountLabelFromEntry(entry)}</strong></div></div>
       </div>
 
       <div className="print-only entry-print-card">
-        <div className="document-head">
-          <div>
-            <div className="document-brand">Kassenbuch Pro</div>
-            <div>{state.settings.businessName}</div>
-            <div>{state.settings.ownerName}</div>
-            <div>{state.settings.street}</div>
-            <div>{state.settings.postalCode} {state.settings.city}</div>
-          </div>
-          <div className="document-meta">
-            <h1>Buchung</h1>
-            <div><span>Datum</span><strong>{formatDate(draft.date)}</strong></div>
-            <div><span>Beleg</span><strong>{draft.documentNumber || "-"}</strong></div>
-          </div>
-        </div>
-        <table className="document-table">
-          <tbody>
-            <tr><th>Kassenkonto</th><td>{cashAccountTitle(entry)}</td></tr>
-            <tr><th>Buchungskonto</th><td>{draft.bookingAccountCode} · {bookingAccount?.label || accountLabelFromEntry(entry)}</td></tr>
-            <tr><th>Text</th><td>{draft.description || "-"}</td></tr>
-            <tr><th>Betrag</th><td>{formatCurrency(amount)}</td></tr>
-            <tr><th>MwSt.</th><td>{draft.taxRate ? `${draft.taxRate} % / ${formatCurrency(taxAmount)}` : "0 %"}</td></tr>
-            <tr><th>Netto</th><td>{formatCurrency(roundMoney(amount - taxAmount))}</td></tr>
-            <tr><th>Kassenwirkung</th><td>{cashChange >= 0 ? "+" : "−"}{formatCurrency(Math.abs(cashChange))}</td></tr>
-          </tbody>
-        </table>
+        <div className="document-head"><div><div className="document-brand">Kassenbuch Pro</div><div>{state.settings.businessName}</div><div>{state.settings.ownerName}</div><div>{state.settings.street}</div><div>{state.settings.postalCode} {state.settings.city}</div></div><div className="document-meta"><h1>Buchung</h1><div><span>Datum</span><strong>{formatDate(draft.date)}</strong></div><div><span>Beleg</span><strong>{draft.documentNumber || "-"}</strong></div></div></div>
+        <table className="document-table"><tbody><tr><th>Kassenkonto</th><td>{cashAccountTitle(entry)}</td></tr><tr><th>Buchungskonto</th><td>{draft.bookingAccountCode} · {bookingAccount?.label || accountLabelFromEntry(entry)}</td></tr><tr><th>Text</th><td>{draft.description || "-"}</td></tr><tr><th>Betrag</th><td>{formatCurrency(amount)}</td></tr><tr><th>MwSt.</th><td>{draft.taxRate ? `${draft.taxRate} % / ${formatCurrency(taxAmount)}` : "0 %"}</td></tr><tr><th>Netto</th><td>{formatCurrency(roundMoney(amount - taxAmount))}</td></tr><tr><th>Kassenwirkung</th><td>{cashChange >= 0 ? "+" : "−"}{formatCurrency(Math.abs(cashChange))}</td></tr></tbody></table>
         {draft.note ? <p className="tax-note">Notiz: {draft.note}</p> : null}
       </div>
     </Modal>
@@ -247,6 +196,7 @@ function createDraft(entry?: LedgerEntry): EntryDraft {
 function bookingAccountCode(entry: LedgerEntry): string {
   if (entry.direction === "transfer" && entry.counterAccountCode) return entry.counterAccountCode;
   if (entry.sourceId?.startsWith("unitel-sales:") && entry.counterAccountCode) return entry.counterAccountCode;
+  if (entry.sourceId?.startsWith("prifoto-sales:") && entry.counterAccountCode) return entry.counterAccountCode;
   if (entry.accountCode) return entry.accountCode;
   const match = entry.category.match(/^(\d{4})/);
   return match?.[1] || "0000";
