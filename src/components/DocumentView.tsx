@@ -14,16 +14,28 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
   const customer = state.customers.find((item) => item.id === document.customerId);
   const device = state.devices.find((item) => item.id === document.deviceId);
   const settings = state.settings;
+  const isRepair = Boolean(document.repairId || document.metadata?.repairNumber);
   const title =
     document.type === "invoice"
       ? "Rechnung"
       : document.type === "receipt"
         ? "Quittung"
-        : document.type === "purchaseContract"
-          ? "Ankaufvertrag"
-          : document.type === "zReport"
-            ? "Tagesabschluss"
-            : "Eingangsrechnung";
+        : document.type === "estimate"
+          ? "Kostenvoranschlag"
+          : document.type === "purchaseContract"
+            ? "Ankaufvertrag"
+            : document.type === "zReport"
+              ? "Tagesabschluss"
+              : "Eingangsrechnung";
+  const repairBrand = textMeta(document, "repairBrand");
+  const repairModel = textMeta(document, "repairModel");
+  const repairImei = textMeta(document, "repairImei");
+  const repairSerial = textMeta(document, "repairSerialNumber");
+  const repairIssue = textMeta(document, "repairIssue");
+  const repairWork = textMeta(document, "repairWorkDescription");
+  const repairAccessories = textMeta(document, "repairAccessories");
+  const repairPasscode = textMeta(document, "repairPasscode");
+  const repairNumber = textMeta(document, "repairNumber");
 
   return (
     <article className="print-document" data-print-kind="business-document">
@@ -39,6 +51,7 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
         <div className="document-meta">
           <h1>{title}</h1>
           <div><span>Nummer</span><strong>{document.documentNumber}</strong></div>
+          {repairNumber ? <div><span>Service Nr.</span><strong>{repairNumber}</strong></div> : null}
           <div><span>Datum</span><strong>{formatDate(document.date)}</strong></div>
         </div>
       </header>
@@ -50,7 +63,7 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
           {(customer.postalCode || customer.city) ? <div>{customer.postalCode} {customer.city}</div> : null}
           {customer.customerNumber ? <div>Kundennummer: {customer.customerNumber}</div> : null}
         </section>
-      ) : document.type === "invoice" ? (
+      ) : document.type === "invoice" || document.type === "estimate" ? (
         <section className="document-customer"><strong>Laufkundschaft</strong></section>
       ) : null}
 
@@ -60,6 +73,14 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
             Der Verkäufer bestätigt, dass das unten bezeichnete Gerät sein Eigentum ist,
             frei von Rechten Dritter übergeben wird und nicht aus einer Straftat stammt.
           </p>
+        </section>
+      ) : null}
+
+      {isRepair ? (
+        <section className="contract-text">
+          <p><strong>Serviceauftrag:</strong> {repairIssue || "Reparatur / Service"}</p>
+          {repairAccessories ? <p><strong>Mitgegebenes Zubehör:</strong> {repairAccessories}</p> : null}
+          {repairPasscode ? <p><strong>Code / Sperre:</strong> {repairPasscode}</p> : null}
         </section>
       ) : null}
 
@@ -75,7 +96,14 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
           <tr>
             <td>1</td>
             <td>
-              {device ? (
+              {isRepair ? (
+                <>
+                  <strong>{repairWork || "Reparatur / Service"}</strong>
+                  <div>{repairBrand} {repairModel}</div>
+                  {repairImei ? <div>IMEI: {repairImei}</div> : null}
+                  {repairSerial ? <div>Seriennummer: {repairSerial}</div> : null}
+                </>
+              ) : device ? (
                 <>
                   <strong>{device.brand} {device.model}</strong>
                   <div>IMEI: {device.imei1}</div>
@@ -96,7 +124,12 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
         <strong>{formatCurrency(document.amount)}</strong>
       </div>
 
-      {document.taxMode === "differential" && document.type !== "purchaseContract" ? (
+      {document.type === "estimate" ? (
+        <p className="tax-note">
+          Dieser Kostenvoranschlag ist noch keine Zahlung und wurde nicht ins Kassenbuch gebucht.
+          Eine Buchung entsteht erst bei Rechnung oder Quittung.
+        </p>
+      ) : document.taxMode === "differential" && document.type !== "purchaseContract" ? (
         <p className="tax-note">
           Gebrauchtgegenstände/Sonderregelung. Besteuerung nach § 25a UStG.
           Die Umsatzsteuer wird nicht gesondert ausgewiesen.
@@ -119,6 +152,12 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
           <div><span>Unterschrift Verkäufer</span></div>
           <div><span>Unterschrift Käufer</span></div>
         </div>
+      ) : isRepair ? (
+        <div className="signature-grid">
+          <div><span>Ort, Datum</span></div>
+          <div><span>Unterschrift Kunde</span></div>
+          <div><span>Unterschrift Annahme</span></div>
+        </div>
       ) : null}
 
       <footer className="document-footer">
@@ -128,4 +167,9 @@ export function DocumentView({ document }: { document: BusinessDocument }) {
       </footer>
     </article>
   );
+}
+
+function textMeta(document: BusinessDocument, key: string): string {
+  const value = document.metadata?.[key];
+  return typeof value === "string" ? value : "";
 }
