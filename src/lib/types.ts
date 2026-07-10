@@ -7,9 +7,24 @@ export type DeviceStatus =
   | "sold"
   | "returned"
   | "defective";
+export type RepairStatus = "intake" | "estimate" | "approved" | "inRepair" | "done" | "paid" | "cancelled";
+export type RepairDocumentType = "estimate" | "invoice" | "receipt";
+export type PageKey =
+  | "dashboard"
+  | "sale"
+  | "purchase"
+  | "repair"
+  | "scan"
+  | "customers"
+  | "devices"
+  | "documents"
+  | "ledger"
+  | "accounts"
+  | "settings";
 export type DocumentType =
   | "invoice"
   | "receipt"
+  | "estimate"
   | "purchaseContract"
   | "zReport"
   | "supplierInvoice";
@@ -17,6 +32,7 @@ export type LedgerDirection = "income" | "expense" | "transfer";
 export type LedgerSource =
   | "sale"
   | "purchase"
+  | "repair"
   | "scan"
   | "bankImport"
   | "paypalImport"
@@ -110,6 +126,30 @@ export interface Sale {
   createdAt: string;
 }
 
+export interface RepairOrder {
+  id: string;
+  repairNumber: string;
+  customerId?: string;
+  date: string;
+  brand: string;
+  model: string;
+  imei?: string;
+  serialNumber?: string;
+  passcode?: string;
+  accessories?: string;
+  issue: string;
+  workDescription: string;
+  status: RepairStatus;
+  price: number;
+  costEstimate?: number;
+  paymentMethod: PaymentMethod;
+  documentType: RepairDocumentType;
+  documentId: string;
+  ledgerEntryId?: string;
+  notes?: string;
+  createdAt: string;
+}
+
 export interface BusinessDocument {
   id: string;
   documentNumber: string;
@@ -119,6 +159,7 @@ export interface BusinessDocument {
   deviceId?: string;
   purchaseId?: string;
   saleId?: string;
+  repairId?: string;
   amount: number;
   taxAmount: number;
   taxMode: TaxMode;
@@ -213,6 +254,7 @@ export interface AppState {
   devices: Device[];
   purchases: Purchase[];
   sales: Sale[];
+  repairs?: RepairOrder[];
   documents: BusinessDocument[];
   ledger: LedgerEntry[];
   importedTransactions: ImportedTransaction[];
