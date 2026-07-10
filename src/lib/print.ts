@@ -4,120 +4,151 @@ export function printHtmlElement(element: HTMLElement | null | undefined, title 
     return;
   }
 
-  const styles = collectPageStyles();
-  const html = buildPrintHtml(element.outerHTML, title, styles);
-  const popup = window.open("", "_blank", "width=980,height=1200,noopener,noreferrer");
-
-  if (popup?.document) {
-    popup.document.open();
-    popup.document.write(html);
-    popup.document.close();
-    runPrintWhenReady(popup);
+  const html = element.outerHTML;
+  if (!html.trim()) {
+    window.alert("Der Druckbereich ist leer. Bitte Fenster schließen und erneut öffnen.");
     return;
   }
 
-  printWithIframe(html);
+  installPrintStyles();
+  const host = createPrintHost(html, title);
+  document.body.classList.add("kassenbuch-native-print");
+
+  const cleanup = () => {
+    document.body.classList.remove("kassenbuch-native-print");
+    host.remove();
+  };
+
+  const mediaQuery = window.matchMedia?.("print");
+  const mediaListener = (event: MediaQueryListEvent) => {
+    if (!event.matches) {
+      cleanup();
+      mediaQuery?.removeEventListener?.("change", mediaListener);
+    }
+  };
+  mediaQuery?.addEventListener?.("change", mediaListener);
+  window.addEventListener("afterprint", cleanup, { once: true });
+
+  window.setTimeout(() => {
+    try {
+      window.focus();
+      window.print();
+    } catch {
+      window.alert("Druckdialog konnte nicht geöffnet werden. Bitte Strg+P drücken, während die Druckvorschau sichtbar ist.");
+    }
+  }, 50);
+
+  window.setTimeout(() => {
+    if (document.body.classList.contains("kassenbuch-native-print")) cleanup();
+  }, 60_000);
 }
 
 export function printFirst(selector: string, title = "Kassenbuch Pro") {
   printHtmlElement(document.querySelector<HTMLElement>(selector), title);
 }
 
-function collectPageStyles(): string {
-  const nodes = Array.from(document.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style'));
-  return nodes.map((node) => node.outerHTML).join("\n");
+function createPrintHost(content: string, title: string): HTMLElement {
+  const oldHost = document.getElementById("kassenbuch-print-host");
+  oldHost?.remove();
+
+  const host = document.createElement("section");
+  host.id = "kassenbuch-print-host";
+  host.setAttribute("aria-label", title);
+  host.innerHTML = `<div class="kassenbuch-print-title">${escapeHtml(title)}</div><div class="kassenbuch-print-content">${content}</div>`;
+  document.body.appendChild(host);
+  return host;
 }
 
-function buildPrintHtml(content: string, title: string, styles: string): string {
-  return `<!doctype html>
-<html lang="de">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${escapeHtml(title)}</title>
-${styles}
-<style>
-  @page { margin: 8mm; }
-  html, body { background: #fff !important; color: #111 !important; margin: 0 !important; min-height: auto !important; }
-  body { padding: 0 !important; font-family: Arial, sans-serif; }
-  .print-shell { width: 100%; background: #fff; color: #111; }
-  .print-document, .ledger-print-source, .ledger-print-document, .entry-print-card, .print-only {
-    display: block !important;
-    visibility: visible !important;
-    position: static !important;
-    width: 100% !important;
-    max-width: none !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
-    box-shadow: none !important;
-  }
-  .screen-only, .modal-header, .modal-footer, .sidebar, .mobile-topbar, .page-header, .booking-shortcuts, .toolbar, button {
-    display: none !important;
-  }
-  .print-document { min-height: 0 !important; padding: 0 !important; }
-  .ledger-print-source { padding: 0 !important; margin: 0 !important; }
-  .ledger-print-document { padding: 0 !important; margin: 0 !important; }
-  .entry-print-card { padding: 0 !important; margin: 0 !important; }
-  table { page-break-inside: auto; }
-  tr { page-break-inside: avoid; page-break-after: auto; }
-  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-</style>
-</head>
-<body>
-<div class="print-shell">${content}</div>
-<script>
-  window.addEventListener('load', function () {
-    setTimeout(function () {
-      window.focus();
-      window.print();
-      setTimeout(function () { window.close(); }, 500);
-    }, 150);
-  });
-</script>
-</body>
-</html>`;
-}
-
-function runPrintWhenReady(target: Window) {
-  const start = () => {
-    try {
-      target.focus();
-      target.print();
-      window.setTimeout(() => target.close(), 700);
-    } catch {
-      // If the browser blocks automatic close/print, the generated tab still contains the printable document.
+function installPrintStyles() {
+  if (document.getElementById("kassenbuch-native-print-style")) return;
+  const style = document.createElement("style");
+  style.id = "kassenbuch-native-print-style";
+  style.textContent = `
+    #kassenbuch-print-host {
+      display: none;
+      background: #fff;
+      color: #111;
+      font-family: Arial, sans-serif;
     }
-  };
-  target.setTimeout(start, 220);
-}
-
-function printWithIframe(html: string) {
-  const frame = document.createElement("iframe");
-  frame.setAttribute("aria-hidden", "true");
-  frame.style.position = "fixed";
-  frame.style.right = "0";
-  frame.style.bottom = "0";
-  frame.style.width = "1px";
-  frame.style.height = "1px";
-  frame.style.border = "0";
-  frame.style.opacity = "0";
-  document.body.appendChild(frame);
-  const frameWindow = frame.contentWindow;
-  const frameDocument = frame.contentDocument || frameWindow?.document;
-  if (!frameWindow || !frameDocument) {
-    frame.remove();
-    window.print();
-    return;
-  }
-  frameDocument.open();
-  frameDocument.write(html);
-  frameDocument.close();
-  frameWindow.setTimeout(() => {
-    frameWindow.focus();
-    frameWindow.print();
-    window.setTimeout(() => frame.remove(), 1000);
-  }, 250);
+    #kassenbuch-print-host .kassenbuch-print-title {
+      display: none;
+    }
+    #kassenbuch-print-host .print-document,
+    #kassenbuch-print-host .ledger-print-source,
+    #kassenbuch-print-host .ledger-print-document,
+    #kassenbuch-print-host .entry-print-card,
+    #kassenbuch-print-host .print-only {
+      display: block !important;
+      visibility: visible !important;
+      position: static !important;
+      width: 100% !important;
+      max-width: none !important;
+      min-height: 0 !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+      box-shadow: none !important;
+      background: #fff !important;
+      color: #111 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    #kassenbuch-print-host .screen-only,
+    #kassenbuch-print-host .modal-header,
+    #kassenbuch-print-host .modal-footer,
+    #kassenbuch-print-host .sidebar,
+    #kassenbuch-print-host .mobile-topbar,
+    #kassenbuch-print-host .page-header,
+    #kassenbuch-print-host .booking-shortcuts,
+    #kassenbuch-print-host .toolbar,
+    #kassenbuch-print-host button {
+      display: none !important;
+    }
+    @media print {
+      @page { size: A4; margin: 8mm; }
+      html,
+      body.kassenbuch-native-print {
+        background: #fff !important;
+        color: #111 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      body.kassenbuch-native-print > :not(#kassenbuch-print-host) {
+        display: none !important;
+      }
+      body.kassenbuch-native-print #kassenbuch-print-host {
+        display: block !important;
+        visibility: visible !important;
+        position: static !important;
+        inset: auto !important;
+        width: 100% !important;
+        max-width: none !important;
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
+        background: #fff !important;
+        color: #111 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      body.kassenbuch-native-print #kassenbuch-print-host,
+      body.kassenbuch-native-print #kassenbuch-print-host * {
+        visibility: visible !important;
+      }
+      body.kassenbuch-native-print #kassenbuch-print-host table {
+        page-break-inside: auto;
+      }
+      body.kassenbuch-native-print #kassenbuch-print-host tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+      }
+      body.kassenbuch-native-print #kassenbuch-print-host * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 function escapeHtml(value: string): string {
