@@ -5,7 +5,7 @@ import { calculateSaleMetrics, formatCurrency, todayIso } from "@/lib/accounting
 import { useKassenStore } from "@/lib/store";
 import type { PaymentMethod } from "@/lib/types";
 import { CustomerModal } from "../CustomerModal";
-import { DocumentView } from "../DocumentView";
+import { DocumentView, printDocumentView } from "../DocumentView";
 import { Badge, Button, Card, Field, Input, Modal, PageHeader, Select } from "../ui";
 
 export function SalePage() {
@@ -148,7 +148,7 @@ export function SalePage() {
         onClose={() => setDocumentId(undefined)}
         title="Verkauf erfolgreich gespeichert"
         wide
-        footer={<><Button variant="secondary" onClick={() => setDocumentId(undefined)}>Schließen</Button><Button onClick={() => window.print()}>Drucken</Button></>}
+        footer={<><Button variant="secondary" onClick={() => setDocumentId(undefined)}>Schließen</Button><Button onClick={printDocumentView}>Drucken</Button></>}
       >
         {document ? <DocumentView document={document} /> : null}
       </Modal>
