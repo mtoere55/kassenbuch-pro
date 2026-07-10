@@ -31,6 +31,7 @@ export const BOOKING_CATEGORIES: BookingCategory[] = [
   { code: "8336", label: "Erloese Differenzbesteuerung", side: "in", vat: 0 },
   { code: "8390", label: "Erloese Differenzbesteuerung KAS", side: "in", vat: 0 },
   { code: "8400", label: "Erloese 19 Prozent", side: "in", vat: 19 },
+  { code: "8401", label: "Erloese 19 Prozent / Prifoto Eigenanteil", side: "in", vat: 19 },
   { code: "8600", label: "Steuerfreie Erloese", side: "in", vat: 0 },
 ];
 
