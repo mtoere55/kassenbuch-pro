@@ -79,14 +79,36 @@ export function normalizeImei(value: string): string {
 export function isValidImei(value: string): boolean {
   const imei = normalizeImei(value);
   if (!/^\d{15}$/.test(imei)) return false;
+  return luhnSum(imei) % 10 === 0;
+}
+
+export function expectedImeiCheckDigit(value: string): number | undefined {
+  const imei = normalizeImei(value);
+  if (imei.length < 14) return undefined;
+  const base = imei.slice(0, 14);
+  const check = (10 - (luhnSum(base) % 10)) % 10;
+  return check;
+}
+
+export function getImeiValidationMessage(value: string, label = "IMEI"): string | undefined {
+  const imei = normalizeImei(value);
+  if (!/^\d{15}$/.test(imei)) return `${label} muss aus genau 15 Ziffern bestehen.`;
+  if (isValidImei(imei)) return undefined;
+  const expected = expectedImeiCheckDigit(imei);
+  return expected === undefined
+    ? `${label} ist nicht gültig.`
+    : `${label} ist 15-stellig, aber die Prüfziffer stimmt nicht. Bitte letzte Ziffer prüfen: erwartet ${expected}.`;
+}
+
+function luhnSum(value: string): number {
   let sum = 0;
-  for (let index = 0; index < 15; index += 1) {
-    let digit = Number(imei[index]);
+  for (let index = 0; index < value.length; index += 1) {
+    let digit = Number(value[index]);
     if (index % 2 === 1) {
       digit *= 2;
       if (digit > 9) digit -= 9;
     }
     sum += digit;
   }
-  return sum % 10 === 0;
+  return sum;
 }
