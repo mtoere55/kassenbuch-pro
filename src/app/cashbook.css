@@ -62,7 +62,21 @@
   body.ledger-printing .ledger-print-table { page-break-inside: auto; }
   body.ledger-printing .ledger-print-table tr { page-break-inside: avoid; page-break-after: auto; }
 
-  body:not(.ledger-printing) .modal .screen-only { display: none !important; }
-  body:not(.ledger-printing) .modal .print-only { display: block !important; }
+  body.document-printing { background: white !important; }
+  body.document-printing * { visibility: hidden !important; }
+  body.document-printing .print-document,
+  body.document-printing .print-document * { visibility: visible !important; }
+  body.document-printing .modal-backdrop,
+  body.document-printing .modal,
+  body.document-printing .modal-body { display: block !important; position: static !important; inset: auto !important; width: 100% !important; max-width: none !important; height: auto !important; max-height: none !important; padding: 0 !important; margin: 0 !important; background: white !important; box-shadow: none !important; overflow: visible !important; }
+  body.document-printing .modal-header,
+  body.document-printing .modal-footer,
+  body.document-printing .sidebar,
+  body.document-printing .mobile-topbar,
+  body.document-printing .page-header { display: none !important; }
+  body.document-printing .print-document { display: block !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; box-shadow: none !important; }
+
+  body:not(.ledger-printing):not(.document-printing) .modal .screen-only { display: none !important; }
+  body:not(.ledger-printing):not(.document-printing) .modal .print-only { display: block !important; }
   .entry-print-card { padding: 0; }
 }
