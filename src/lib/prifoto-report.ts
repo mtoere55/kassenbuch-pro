@@ -2,6 +2,7 @@ import { getTaxAmountFromGross, makeId } from "./accounting";
 import type { AppState, BusinessDocument, LedgerEntry, PaymentMethod } from "./types";
 
 const TOLERANCE = 0.02;
+const PRIFOTO_CLEARING_ACCOUNT = "1592";
 
 export interface PrifotoDailySale {
   date: string;
@@ -33,6 +34,17 @@ export interface PrifotoSalesReport {
   sourceText: string;
 }
 
+export interface PrifotoDetailReport {
+  invoiceNumber: string;
+  invoiceDate: string;
+  customerNumber: string;
+  periodLabel: string;
+  totalSales: number;
+  prifotoShareGross: number;
+  ownShareGross: number;
+  sourceText: string;
+}
+
 export type PrifotoCashAllocation = Record<string, number>;
 
 export interface PrifotoImportPlan {
@@ -40,6 +52,10 @@ export interface PrifotoImportPlan {
   entries: LedgerEntry[];
   cashEntries: number;
   cardEntries: number;
+  clearingEntries: number;
+  revenueEntries: number;
+  prifotoShareGross: number;
+  ownShareGross: number;
 }
 
 export interface PrifotoValidation {
@@ -95,6 +111,37 @@ export function parsePrifotoSalesReport(text: string): PrifotoSalesReport {
   return report;
 }
 
+export function parsePrifotoDetailReport(text: string): PrifotoDetailReport {
+  const source = text.replace(/\u00a0/g, " ");
+  const normalized = source.replace(/\s+/g, " ").trim();
+  if (!/Abrechnungsübersicht/i.test(normalized) || !/Prifoto\s+GmbH/i.test(normalized)) {
+    throw new Error("Das PDF ist keine unterstützte Prifoto-Abrechnungsübersicht.");
+  }
+  const invoiceNumber = textMatch(normalized, /Rechnungnummer:\s*([A-Z0-9-]+)/i) || textMatch(normalized, /Rechnungsnummer:\s*([A-Z0-9-]+)/i);
+  const invoiceDate = parseGermanDate(textMatch(normalized, /Rechnungsdatum:\s*(\d{2}\.\d{2}\.\d{4})/i));
+  const customerNumber = textMatch(normalized, /Kundennummer:\s*([A-Z0-9-]+)/i);
+  const period = textMatch(normalized, /Zeitraum:\s*([A-Za-zÄÖÜäöüß]+\s+\d{4})/i);
+  const totalSales = labeledMoney(normalized, "Brutto Einnahmen Fotografie");
+  const prifotoShareGross = labeledMoney(normalized, "Anteil Prifoto");
+  const payableGross = labeledMoney(normalized, "Gesamtbetrag Brutto");
+  if (!close(prifotoShareGross, payableGross)) {
+    throw new Error(`Anteil Prifoto ${money(prifotoShareGross)} stimmt nicht mit Gesamtbetrag Brutto ${money(payableGross)} überein.`);
+  }
+  if (!invoiceNumber || !invoiceDate || !period) {
+    throw new Error("Rechnungsnummer, Rechnungsdatum oder Zeitraum der Prifoto-Abrechnung konnte nicht gelesen werden.");
+  }
+  return {
+    invoiceNumber,
+    invoiceDate,
+    customerNumber,
+    periodLabel: period,
+    totalSales,
+    prifotoShareGross,
+    ownShareGross: roundMoney(totalSales - prifotoShareGross),
+    sourceText: text,
+  };
+}
+
 export function validatePrifotoSalesReport(report: PrifotoSalesReport): PrifotoValidation {
   const issues: string[] = [];
   if (report.endDate < report.startDate) issues.push("Das Enddatum liegt vor dem Startdatum.");
@@ -114,12 +161,18 @@ export function createPrifotoImportPlan(
   current: AppState,
   report: PrifotoSalesReport,
   cashByDate: PrifotoCashAllocation,
+  prifotoShareGross: number,
   fileName: string,
   fileDataUrl?: string,
 ): PrifotoImportPlan {
   const validation = validatePrifotoSalesReport(report);
   if (!validation.valid) throw new Error(validation.issues.join(" "));
-  const fingerprint = prifotoFingerprint(report);
+  const prifotoShare = roundMoney(prifotoShareGross);
+  if (!Number.isFinite(prifotoShare) || prifotoShare < -TOLERANCE || prifotoShare > report.totalSales + TOLERANCE) {
+    throw new Error("Der Prifoto-Anteil ist ungültig.");
+  }
+  const ownShareGross = roundMoney(report.totalSales - prifotoShare);
+  const fingerprint = prifotoFingerprint(report, prifotoShare);
   const duplicate = current.documents.find((document) => document.metadata?.prifotoFingerprint === fingerprint);
   if (duplicate) throw new Error(`Dieser Prifoto-Bericht wurde bereits als ${duplicate.documentNumber} importiert.`);
 
@@ -136,18 +189,25 @@ export function createPrifotoImportPlan(
   const entries: LedgerEntry[] = [];
   let cashEntries = 0;
   let cardEntries = 0;
+  let clearingEntries = 0;
 
   for (const day of report.days) {
     const cash = roundMoney(cashByDate[day.date] || 0);
     const card = roundMoney(day.amount - cash);
     if (cash > TOLERANCE) {
-      entries.push(createSalesEntry(report, day, "cash", cash, documentId, documentNumber, createdAt, fileName, fileDataUrl));
+      entries.push(createCollectionEntry(report, day, "cash", cash, fingerprint, documentId, documentNumber, createdAt, fileName, fileDataUrl));
       cashEntries += 1;
+      clearingEntries += 1;
     }
     if (card > TOLERANCE) {
-      entries.push(createSalesEntry(report, day, "card", card, documentId, documentNumber, createdAt, fileName, fileDataUrl));
+      entries.push(createCollectionEntry(report, day, "card", card, fingerprint, documentId, documentNumber, createdAt, fileName, fileDataUrl));
       cardEntries += 1;
+      clearingEntries += 1;
     }
+  }
+
+  if (ownShareGross > TOLERANCE) {
+    entries.push(createOwnShareEntry(report, ownShareGross, prifotoShare, fingerprint, documentId, documentNumber, createdAt, fileName, fileDataUrl));
   }
 
   const document: BusinessDocument = {
@@ -156,7 +216,7 @@ export function createPrifotoImportPlan(
     type: "zReport",
     date: report.endDate,
     amount: report.totalSales,
-    taxAmount: roundMoney(getTaxAmountFromGross(report.totalSales, 19)),
+    taxAmount: roundMoney(getTaxAmountFromGross(ownShareGross, 19)),
     taxMode: "standard19",
     status: "archived",
     originalFileName: fileName,
@@ -172,6 +232,8 @@ export function createPrifotoImportPlan(
       periodStart: report.startDate,
       periodEnd: report.endDate,
       totalSales: report.totalSales,
+      prifotoShareGross: prifotoShare,
+      ownShareGross,
       orderCount: report.orderCount,
       dayCount: report.days.length,
       dailyAverage: report.dailyAverage,
@@ -182,53 +244,106 @@ export function createPrifotoImportPlan(
       createdLedgerEntries: entries.length,
       cashEntries,
       cardEntries,
+      clearingEntries,
+      revenueEntries: ownShareGross > TOLERANCE ? 1 : 0,
     },
     createdAt,
   };
 
-  return { document, entries, cashEntries, cardEntries };
+  return {
+    document,
+    entries,
+    cashEntries,
+    cardEntries,
+    clearingEntries,
+    revenueEntries: ownShareGross > TOLERANCE ? 1 : 0,
+    prifotoShareGross: prifotoShare,
+    ownShareGross,
+  };
 }
 
-export function prifotoFingerprint(report: PrifotoSalesReport): string {
-  return `prifoto:${report.invoiceNumber}:${report.invoiceDate}:${report.totalSales.toFixed(2)}:${report.orderCount}`;
+export function prifotoFingerprint(report: PrifotoSalesReport, prifotoShareGross = 0): string {
+  return `prifoto:${report.invoiceNumber}:${report.invoiceDate}:${report.totalSales.toFixed(2)}:${report.orderCount}:${prifotoShareGross.toFixed(2)}`;
 }
 
-function createSalesEntry(
+function createCollectionEntry(
   report: PrifotoSalesReport,
   day: PrifotoDailySale,
   paymentMethod: Extract<PaymentMethod, "cash" | "card">,
   amount: number,
+  fingerprint: string,
   documentId: string,
   documentNumber: string,
   createdAt: string,
   fileName: string,
   fileDataUrl?: string,
 ): LedgerEntry {
-  const taxAmount = roundMoney(getTaxAmountFromGross(amount, 19));
+  const paymentAccount = paymentMethod === "cash" ? "1000" : "1360";
   return {
     id: makeId("ledger"),
     date: day.date,
-    direction: "income",
+    direction: "transfer",
     amount,
     paymentMethod,
-    description: `Prifoto Tagesverkäufe ${formatGermanDate(day.date)}`,
-    category: "8400 · Erlöse 19 Prozent / Prifoto",
+    description: `Prifoto Fotografie Tagesumsatz ${formatGermanDate(day.date)}`,
+    category: `${PRIFOTO_CLEARING_ACCOUNT} · Durchlaufende Posten / Prifoto`,
     source: "prifotoImport",
-    sourceId: `${prifotoFingerprint(report)}:${day.date}:${paymentMethod}`,
+    sourceId: `prifoto-sales:${fingerprint}:${day.date}:${paymentMethod}`,
+    documentId,
+    taxAmount: 0,
+    taxRate: 0,
+    taxMode: "taxFree",
+    reconciled: true,
+    accountCode: paymentAccount,
+    counterAccountCode: PRIFOTO_CLEARING_ACCOUNT,
+    documentNumber,
+    groupId: `prifoto:${fingerprint}:${day.date}`,
+    cashChange: paymentMethod === "cash" ? amount : 0,
+    netAmount: amount,
+    attachmentFileName: fileName,
+    attachmentDataUrl: fileDataUrl,
+    note: `${day.weekday} · ${day.orders} Bestellung(en) · Kundenzahlung ${money(day.amount)} · davon ${paymentMethod === "cash" ? "bar" : "Karte"} ${money(amount)} · zunächst Prifoto-Clearing`,
+    manualKind: "transfer",
+    createdAt,
+  };
+}
+
+function createOwnShareEntry(
+  report: PrifotoSalesReport,
+  ownShareGross: number,
+  prifotoShareGross: number,
+  fingerprint: string,
+  documentId: string,
+  documentNumber: string,
+  createdAt: string,
+  fileName: string,
+  fileDataUrl?: string,
+): LedgerEntry {
+  const taxAmount = roundMoney(getTaxAmountFromGross(ownShareGross, 19));
+  return {
+    id: makeId("ledger"),
+    date: report.endDate,
+    direction: "income",
+    amount: ownShareGross,
+    paymentMethod: "bank",
+    description: `Prifoto Eigenanteil ${report.periodLabel}`,
+    category: "8400 · Erlöse 19 Prozent / Prifoto Eigenanteil",
+    source: "prifotoImport",
+    sourceId: `prifoto-own-share:${fingerprint}`,
     documentId,
     taxAmount,
     taxRate: 19,
     taxMode: "standard19",
     reconciled: true,
     accountCode: "8400",
-    counterAccountCode: paymentMethod === "cash" ? "1000" : "1360",
-    documentNumber,
-    groupId: `prifoto:${prifotoFingerprint(report)}:${day.date}`,
-    cashChange: paymentMethod === "cash" ? amount : 0,
-    netAmount: roundMoney(amount - taxAmount),
+    counterAccountCode: PRIFOTO_CLEARING_ACCOUNT,
+    documentNumber: `PRIFOTO-EIGEN-${report.invoiceDate.replaceAll("-", "")}`,
+    groupId: `prifoto:${fingerprint}:own-share`,
+    cashChange: 0,
+    netAmount: roundMoney(ownShareGross - taxAmount),
     attachmentFileName: fileName,
     attachmentDataUrl: fileDataUrl,
-    note: `${day.weekday} · ${day.orders} Bestellung(en) · Tagesgesamt ${money(day.amount)} · davon ${paymentMethod === "cash" ? "bar" : "Karte"} ${money(amount)}`,
+    note: `Aus Prifoto-Abrechnung: Kundeneinnahmen ${money(report.totalSales)}, Anteil Prifoto ${money(prifotoShareGross)}, eigener Bruttoanteil ${money(ownShareGross)}.`,
     manualKind: "income",
     createdAt,
   };
@@ -270,6 +385,13 @@ function parseProducts(text: string): PrifotoProductShare[] {
     });
   }
   return products;
+}
+
+function labeledMoney(text: string, label: string): number {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`${escaped}\s+([\d.]+,\d{2})\s*€?`, "i"));
+  if (!match) throw new Error(`${label} konnte im Prifoto-Bericht nicht gelesen werden.`);
+  return parseGermanMoney(match[1]);
 }
 
 function textMatch(text: string, pattern: RegExp): string {
