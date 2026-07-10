@@ -4,6 +4,13 @@ import { formatCurrency, formatDate } from "@/lib/accounting";
 import { useKassenStore } from "@/lib/store";
 import type { BusinessDocument } from "@/lib/types";
 
+export function printDocumentView() {
+  document.body.classList.add("document-printing");
+  const cleanup = () => document.body.classList.remove("document-printing");
+  window.addEventListener("afterprint", cleanup, { once: true });
+  window.setTimeout(() => window.print(), 80);
+}
+
 export function DocumentView({ document }: { document: BusinessDocument }) {
   const { state } = useKassenStore();
   const customer = state.customers.find((item) => item.id === document.customerId);
