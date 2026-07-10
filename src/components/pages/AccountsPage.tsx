@@ -20,6 +20,7 @@ import { Badge, Button, Card, EmptyState, PageHeader, StatCard } from "../ui";
 import { BankTransactionReviewModal } from "./BankTransactionReviewModal";
 import { FlatpayReportImportModal } from "./FlatpayReportImportModal";
 import { PayPalTransactionReviewModal } from "./PayPalTransactionReviewModal";
+import { PrifotoReportImportModal } from "./PrifotoReportImportModal";
 import { UnitelDailyImportModal } from "./UnitelDailyImportModal";
 import { UnitelReportImportModal } from "./UnitelReportImportModal";
 
@@ -31,6 +32,7 @@ export function AccountsPage() {
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string>();
   const [flatpayOpen, setFlatpayOpen] = useState(false);
+  const [prifotoOpen, setPrifotoOpen] = useState(false);
   const [unitelOpen, setUnitelOpen] = useState(false);
   const [unitelDailyOpen, setUnitelDailyOpen] = useState(false);
   const [bankPdfLoading, setBankPdfLoading] = useState(false);
@@ -141,6 +143,9 @@ export function AccountsPage() {
   const flatpayReports = state.documents.filter(
     (document) => document.type === "zReport" && document.metadata?.provider === "Flatpay",
   );
+  const prifotoReports = state.documents.filter(
+    (document) => document.type === "zReport" && document.metadata?.provider === "Prifoto",
+  );
   const unitelDailyReports = state.documents.filter(
     (document) => document.type === "zReport" && document.metadata?.reportKind === "Pin-Sales-Tagesliste",
   );
@@ -166,7 +171,7 @@ export function AccountsPage() {
 
   return <div>
     <PageHeader
-      title="Bank, PayPal, Flatpay & UniTel"
+      title="Bank, PayPal, Flatpay, Prifoto & UniTel"
       subtitle="PDF- und CSV-Kontobewegungen importieren, automatisch buchen und mit Belegen abgleichen."
       actions={<div className="document-actions"><Button variant="secondary" onClick={reconcile}>Automatisch abgleichen</Button><Button onClick={prepareBookkeeping}>PayPal-Buchhaltung erstellen</Button></div>}
     />
@@ -205,6 +210,15 @@ export function AccountsPage() {
           <div className="account-meta"><Badge tone="info">{flatpayReports.length} Berichte</Badge><Badge tone="success">PDF-Abgleich</Badge></div>
         </div>
         <Button variant="secondary" icon="upload" onClick={() => setFlatpayOpen(true)}>Flatpay-PDF importieren</Button>
+      </Card>
+      <Card className="account-card">
+        <div className="account-logo bank">P</div>
+        <div>
+          <h2>Prifoto Tagesverkäufe</h2>
+          <p>Prifoto-Umsatzbericht PDF auslesen und Tagesverkäufe automatisch mit 19 % USt ins Kassenbuch übernehmen.</p>
+          <div className="account-meta"><Badge tone="info">{prifotoReports.length} Berichte</Badge><Badge tone="success">Tagesbuchungen</Badge></div>
+        </div>
+        <Button variant="secondary" icon="upload" onClick={() => setPrifotoOpen(true)}>Prifoto-PDF importieren</Button>
       </Card>
       <Card className="account-card">
         <div className="account-logo bank">U</div>
@@ -275,6 +289,7 @@ export function AccountsPage() {
     <PayPalTransactionReviewModal transaction={selectedTransaction?.accountType === "paypal" ? selectedTransaction : undefined} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
     <BankTransactionReviewModal transaction={selectedTransaction?.accountType === "bank" ? selectedTransaction : undefined} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
     <FlatpayReportImportModal open={flatpayOpen} onClose={() => setFlatpayOpen(false)} onImported={setMessage} />
+    <PrifotoReportImportModal open={prifotoOpen} onClose={() => setPrifotoOpen(false)} onImported={setMessage} />
     <UnitelDailyImportModal open={unitelDailyOpen} onClose={() => setUnitelDailyOpen(false)} onImported={setMessage} />
     <UnitelReportImportModal open={unitelOpen} onClose={() => setUnitelOpen(false)} onImported={setMessage} />
   </div>;
@@ -317,6 +332,7 @@ function statusLabel(item: ImportedTransaction, internal: boolean) {
 function documentTypeLabel(document: BusinessDocument) {
   if (document.metadata?.reportKind === "Kontoauszug") return "Kontoauszug";
   if (document.metadata?.provider === "Flatpay") return "Umsatzbericht";
+  if (document.metadata?.provider === "Prifoto") return "Prifoto-Umsatzbericht";
   if (document.metadata?.provider === "UniTel") return "UniTel-Abrechnung";
   return ({ invoice: "Rechnung", receipt: "Quittung", purchaseContract: "Ankaufvertrag", supplierInvoice: "Eingangsrechnung", zReport: "Tagesabschluss" } as const)[document.type];
 }
