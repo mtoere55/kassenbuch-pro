@@ -62,6 +62,7 @@ Ana modüller:
 - UniTel Monatsabrechnung kontrol sistemi
 - UniTel / Pin-Sales günlük Guthaben importu
 - Prifoto Tagesverkäufe PDF importu, Prifoto Detail-Abrechnung mantığı ile clearing ayrımı
+- Prifoto import artık `.pdf` uzantısı olmayan ama içerik imzası `%PDF-` olan dosyaları da kabul eder
 - Kassenbuch yazdırma akışı: `Drucken`, `Drucken mit Belegen`, `CSV-Datei`
 - Kassenbuch satırına tıklayınca `Buchung bearbeiten` kartı açılır; tarih, art, Buchungskonto, Zahlungsart, Betrag, MwSt., Beleg, Text ve Notiz düzenlenebilir
 - Kassenbuch Konto kolonu cash/account ana hesabı yerine karşı hesap mantığıyla gösterilir; UniTel bar satırında `1590 · Durchlaufende Posten / UniTel`, Prifoto bar satırında `1592 · Durchlaufende Posten / Prifoto` görünmelidir
@@ -82,6 +83,8 @@ Yüklenen örnek dosyalar:
 RE-010620263320_Tagesverkäufe
 RE-010620263320_Detail
 ```
+
+Bu dosyalar PDF olmasına rağmen uzantısız gelebilir. Yazılım artık dosya adından değil, içerikteki `%PDF-` imzasından PDF olduğunu anlar.
 
 Tagesverkäufe PDF içeriği:
 
@@ -107,7 +110,8 @@ Muhasebe mantığı:
 - Müşteriden tahsil edilen toplam önce `1592 · Durchlaufende Posten / Prifoto` clearing hesabına gider.
 - Bar seçilirse `1000 · Kasse` 480,00 € kadar artabilir.
 - Karte seçilirse `1360 · Geldtransit und Karte` kullanılır, fiziksel kasa artmaz.
-- `Anteil Prifoto / Gesamtbetrag Brutto` kullanıcı tarafından Detail-Abrechnung’dan girilir; bu örnekte 240,00 €.
+- `Prifoto Detail-Abrechnung` ikinci alana yüklenirse `Anteil Prifoto` otomatik okunur.
+- Manuel gerekirse `Anteil Prifoto / Gesamtbetrag Brutto` alanına bu örnekte `240,00` yazılır.
 - Gerçek gelir sadece kalan kendi brüt paydır; bu örnekte 240,00 €.
 - Kendi payı `8400 · Erlöse 19 Prozent / Prifoto Eigenanteil` olarak ve karşı hesap `1592` ile yazılır.
 - Prifoto’ya ödeme yapıldığında sonraki adım `1592` hesabını kapatacak banka ödeme eşleştirmesidir.
@@ -140,7 +144,7 @@ Muhasebe mantığı:
 - Bar kısmı `1000 · Kasse` bakiyesini artırır.
 - Karte kısmı `1360 · Geldtransit und Karte` üzerinden izlenir ve fiziksel kasayı artırmaz.
 - Gerçek gelir sadece aylık komisyon/provision kısmıdır.
-- Komisyon ayda bir defa `8400 · UniTel Provision 19 Prozent` olarak yazılır.
+- Komisyon ayda bir defa `8400` hesabına 19% USt ile yazılır.
 - Komisyonun karşı hesabı `1590`dır.
 - Aylık UniTel PDF sadece kontrol ve arşiv içindir; günlük satışları tekrar kasa yazmaz.
 
@@ -166,18 +170,16 @@ Program 698 satırı 698 ayrı kasa kaydı yapmaz. Günlük toplam yapar. Aynı 
 
 ## Açık / dikkatli taşınacak iş
 
-PR #15 / `m14-july-controls` açık ve merge edilmemiştir. Direkt merge edilmemeli. Gerekirse faydalı parçalar `main` üzerinden yeni temiz branch'e tek tek taşınmalı.
+PR #15 / `m14-july-controls` açık ve merge edilmemiştir. Bu branch `main`den ayrışmış durumda. Direkt merge edilmemeli. Gerekirse faydalı parçalar `main` üzerinden yeni temiz branch'e tek tek taşınmalı.
 
 ## Sonraki güvenli görevler
 
-1. Kullanıcı Prifoto import ekran görüntüsü gönderirse toplamlar kontrol edilecek.
-2. Prifoto için Detail-Abrechnung’daki `Anteil Prifoto` değeri import ekranındaki alana girilecek.
-3. Bankadan Prifoto’ya giden ödeme `1592` clearing hesabını kapatacak şekilde eşleştirilecek.
-4. UniTel günlük import ekran görüntüsü gönderirse toplamlar kontrol edilecek.
-5. Parser hatası çıkarsa ilgili parser dosyası düzeltilecek.
-6. Bankadan UniTel'e giden aylık ödemeler `1590` clearing hesabını kapatacak şekilde eşleştirilecek.
-7. Bar/Karte ayrımı bilinmiyorsa kullanıcı Z-Bericht/Flatpay ile gün bazında ayıracak.
-8. Kassenbuch yazdırma ve satır düzenleme test edilecek.
+1. Kullanıcı UniTel günlük import ekran görüntüsü gönderirse toplamlar kontrol edilecek.
+2. Parser hatası çıkarsa `src/lib/unitel-daily-report.ts` düzeltilecek.
+3. Prifoto import test edilecek: uzantısız `RE-010620263320_Tagesverkäufe` ve `RE-010620263320_Detail` dosyaları kabul ediliyor mu.
+4. Bankadan UniTel'e ve Prifoto'ya giden aylık ödemeler ilgili clearing hesabını kapatacak şekilde eşleştirilecek.
+5. Bar/Karte ayrımı bilinmiyorsa kullanıcı Z-Bericht/Flatpay ile gün bazında ayıracak.
+6. PR #15 içindeki faydalı işler, main üzerine güvenli şekilde yeniden kurulacak.
 
 ## Cevap stili
 
