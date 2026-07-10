@@ -64,11 +64,13 @@ Ana modüller:
 - Prifoto Tagesverkäufe PDF importu, Prifoto Detail-Abrechnung mantığı ile clearing ayrımı
 - Prifoto import artık `.pdf` uzantısı olmayan ama içerik imzası `%PDF-` olan dosyaları da kabul eder
 - Kontenplan içinde `8401 · Erlöse 19 Prozent / Prifoto Eigenanteil` var; manuel Buchung seçeneğinde görünmelidir
-- Kassenbuch yazdırma akışı: `Drucken`, `Drucken mit Belegen`, `CSV-Datei`
+- Yazdırma motoru artık `src/lib/print.ts` üzerinden izole print penceresi/iframe kullanır; body class / modal CSS ile gizle-göster yapılmamalı
+- `Ankaufvertrag`, `Rechnung`, `Quittung`, `Kassenbuch Drucken`, `Drucken mit Belegen` ve `Buchung bearbeiten → Drucken` aynı izole print mantığına bağlıdır
 - Kassenbuch satırına tıklayınca `Buchung bearbeiten` kartı açılır; tarih, art, Buchungskonto, Zahlungsart, Betrag, MwSt., Beleg, Text ve Notiz düzenlenebilir
 - `Buchung bearbeiten` kartında `Buchung löschen` vardır; silme işlemi karttan yapılır
 - Kassenbuch tablosundaki ayrı `Prüfen` butonları kaldırılmıştır; işlem tek yüzey olarak satıra tıklayıp açılan karttan yapılır
 - Kassenbuch Konto kolonu cash/account ana hesabı yerine karşı hesap mantığıyla gösterilir; UniTel bar satırında `1590 · Durchlaufende Posten / UniTel`, Prifoto bar satırında `1592 · Durchlaufende Posten / Prifoto` görünmelidir
+- §25a satış düzenleme kartında MwSt satış toplamından değil, alış-satış farkından hesaplanmalıdır. Örn. alış 40 €, satış 150 €, Marge 110 €, MwSt 17,56 €.
 
 ## Prifoto Tagesverkäufe PDF importu
 
@@ -183,7 +185,7 @@ PR #15 / `m14-july-controls` açık ve merge edilmemiştir. Bu branch `main`den 
 4. Bankadan UniTel'e ve Prifoto'ya giden aylık ödemeler ilgili clearing hesabını kapatacak şekilde eşleştirilecek.
 5. Bar/Karte ayrımı bilinmiyorsa kullanıcı Z-Bericht/Flatpay ile gün bazında ayıracak.
 6. PR #15 içindeki faydalı işler, main üzerine güvenli şekilde yeniden kurulacak.
-7. Kassenbuch test edilecek: tabloda `Prüfen` butonu görünmemeli; satıra tıklayınca kart açılmalı; karttan düzenleme, yazdırma ve silme yapılmalı.
+7. Yazdırma test edilecek: Ankaufvertrag, Rechnung, Quittung, Kassenbuch Drucken, Drucken mit Belegen ve Buchung bearbeiten → Drucken beyaz sayfa vermemeli; ayrı temiz print penceresi açmalı.
 
 ## Cevap stili
 
