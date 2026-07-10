@@ -22,6 +22,7 @@ export type LedgerSource =
   | "paypalImport"
   | "flatpayImport"
   | "unitelImport"
+  | "prifotoImport"
   | "kasImport"
   | "manual";
 export type ImportedTransactionType =
@@ -217,15 +218,3 @@ export interface AppState {
   importedTransactions: ImportedTransaction[];
   settings: BusinessSettings;
 }
-
-export type PageKey =
-  | "dashboard"
-  | "sale"
-  | "purchase"
-  | "scan"
-  | "customers"
-  | "devices"
-  | "documents"
-  | "ledger"
-  | "accounts"
-  | "settings";
