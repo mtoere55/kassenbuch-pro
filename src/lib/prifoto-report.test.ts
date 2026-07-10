@@ -95,6 +95,7 @@ describe("Prifoto sales report", () => {
     expect(plan.ownShareGross).toBe(240);
     expect(plan.document.metadata?.provider).toBe("Prifoto");
     expect(plan.document.metadata?.prifotoShareGross).toBe(240);
+    expect(plan.document.metadata?.revenueAccount).toBe("8401");
     expect(plan.entries[0]).toMatchObject({
       source: "prifotoImport",
       direction: "transfer",
@@ -106,7 +107,7 @@ describe("Prifoto sales report", () => {
     expect(revenue).toMatchObject({
       source: "prifotoImport",
       direction: "income",
-      accountCode: "8400",
+      accountCode: "8401",
       counterAccountCode: "1592",
       amount: 240,
       taxRate: 19,
