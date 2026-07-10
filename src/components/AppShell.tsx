@@ -12,6 +12,7 @@ import { DevicesPage } from "./pages/DevicesPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { LedgerImportPage } from "./pages/LedgerImportPage";
 import { PurchasePage } from "./pages/PurchasePage";
+import { RepairPage } from "./pages/RepairPage";
 import { SalePage } from "./pages/SalePage";
 import { ScannerPage } from "./pages/ScannerPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -20,6 +21,7 @@ const mainNav: Array<{ key: PageKey; icon: IconName }> = [
   { key: "dashboard", icon: "home" },
   { key: "sale", icon: "sale" },
   { key: "purchase", icon: "purchase" },
+  { key: "repair", icon: "devices" },
   { key: "scan", icon: "scan" },
   { key: "customers", icon: "customers" },
   { key: "devices", icon: "devices" },
@@ -64,6 +66,7 @@ function renderPage(page: PageKey, navigate: (page: PageKey) => void) {
     case "dashboard": return <DashboardPage onNavigate={navigate} />;
     case "sale": return <SalePage />;
     case "purchase": return <PurchasePage />;
+    case "repair": return <RepairPage />;
     case "scan": return <ScannerPage />;
     case "customers": return <CustomersPage />;
     case "devices": return <DevicesPage />;
