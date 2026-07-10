@@ -63,6 +63,7 @@ Ana modüller:
 - UniTel / Pin-Sales günlük Guthaben importu
 - Prifoto Tagesverkäufe PDF importu, Prifoto Detail-Abrechnung mantığı ile clearing ayrımı
 - Prifoto import artık `.pdf` uzantısı olmayan ama içerik imzası `%PDF-` olan dosyaları da kabul eder
+- Kontenplan içinde `8401 · Erlöse 19 Prozent / Prifoto Eigenanteil` var; manuel Buchung seçeneğinde görünmelidir
 - Kassenbuch yazdırma akışı: `Drucken`, `Drucken mit Belegen`, `CSV-Datei`
 - Kassenbuch satırına tıklayınca `Buchung bearbeiten` kartı açılır; tarih, art, Buchungskonto, Zahlungsart, Betrag, MwSt., Beleg, Text ve Notiz düzenlenebilir
 - Kassenbuch Konto kolonu cash/account ana hesabı yerine karşı hesap mantığıyla gösterilir; UniTel bar satırında `1590 · Durchlaufende Posten / UniTel`, Prifoto bar satırında `1592 · Durchlaufende Posten / Prifoto` görünmelidir
@@ -113,7 +114,7 @@ Muhasebe mantığı:
 - `Prifoto Detail-Abrechnung` ikinci alana yüklenirse `Anteil Prifoto` otomatik okunur.
 - Manuel gerekirse `Anteil Prifoto / Gesamtbetrag Brutto` alanına bu örnekte `240,00` yazılır.
 - Gerçek gelir sadece kalan kendi brüt paydır; bu örnekte 240,00 €.
-- Kendi payı `8400 · Erlöse 19 Prozent / Prifoto Eigenanteil` olarak ve karşı hesap `1592` ile yazılır.
+- Kendi payı `8401 · Erlöse 19 Prozent / Prifoto Eigenanteil` olarak ve karşı hesap `1592` ile yazılır.
 - Prifoto’ya ödeme yapıldığında sonraki adım `1592` hesabını kapatacak banka ödeme eşleştirmesidir.
 - Aynı PDF ikinci kez yüklenirse fingerprint ile mükerrer engellenir.
 
