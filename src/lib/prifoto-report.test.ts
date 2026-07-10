@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialState } from "./store";
-import { createPrifotoImportPlan, parsePrifotoSalesReport } from "./prifoto-report";
+import { createPrifotoImportPlan, parsePrifotoDetailReport, parsePrifotoSalesReport } from "./prifoto-report";
 
 const sample = `Umsatzbericht
 Prifoto GmbH Kleppingstr. 28, 44135 Dortmund
@@ -34,6 +34,18 @@ Fotoshooting EU 420,00 € (78,7%)
 TopPortrait Digital Download 30,00 € (5,6%)
 Retusche_de 24,00 € (4,5%)`;
 
+const detail = `Abrechnungsübersicht
+Prifoto GmbH Kleppingstr. 28, 44135 Dortmund
+Ali Sun Kundennummer: 168
+Badstraße 6 Rechnungnummer: RE-010620263320
+Rechnungsdatum: 04.07.2026
+58095 Hagen
+Zeitraum: Juni 2026
+Fotografie
+Brutto Einnahmen Fotografie 480,00 €
+Anteil Prifoto 240,00 €
+Gesamtbetrag Brutto 240,00 €`;
+
 describe("Prifoto sales report", () => {
   it("parses the monthly report and daily rows", () => {
     const report = parsePrifotoSalesReport(sample);
@@ -54,30 +66,58 @@ describe("Prifoto sales report", () => {
     expect(report.days.reduce((sum, day) => sum + day.orders, 0)).toBe(30);
   });
 
-  it("creates one or two daily bookkeeping entries without duplicating the PDF", () => {
+  it("parses the detail statement with Prifoto share", () => {
+    const parsed = parsePrifotoDetailReport(detail);
+    expect(parsed).toMatchObject({
+      invoiceNumber: "RE-010620263320",
+      invoiceDate: "2026-07-04",
+      totalSales: 480,
+      prifotoShareGross: 240,
+      ownShareGross: 240,
+    });
+  });
+
+  it("books customer payments through clearing and only the own share as revenue", () => {
     const report = parsePrifotoSalesReport(sample);
     const plan = createPrifotoImportPlan(
       initialState,
       report,
       Object.fromEntries(report.days.map((day) => [day.date, day.amount])),
+      240,
       "RE-010620263320_Tagesverkäufe.pdf",
     );
-    expect(plan.entries).toHaveLength(15);
+    expect(plan.entries).toHaveLength(16);
     expect(plan.cashEntries).toBe(15);
     expect(plan.cardEntries).toBe(0);
+    expect(plan.clearingEntries).toBe(15);
+    expect(plan.revenueEntries).toBe(1);
+    expect(plan.prifotoShareGross).toBe(240);
+    expect(plan.ownShareGross).toBe(240);
     expect(plan.document.metadata?.provider).toBe("Prifoto");
+    expect(plan.document.metadata?.prifotoShareGross).toBe(240);
     expect(plan.entries[0]).toMatchObject({
+      source: "prifotoImport",
+      direction: "transfer",
+      accountCode: "1000",
+      counterAccountCode: "1592",
+      taxRate: 0,
+    });
+    const revenue = plan.entries.at(-1);
+    expect(revenue).toMatchObject({
       source: "prifotoImport",
       direction: "income",
       accountCode: "8400",
-      counterAccountCode: "1000",
+      counterAccountCode: "1592",
+      amount: 240,
       taxRate: 19,
+      cashChange: 0,
     });
-    expect(plan.entries[0].taxAmount).toBe(3.19);
+    expect(revenue?.taxAmount).toBe(38.32);
     expect(() => createPrifotoImportPlan(
       { ...initialState, documents: [plan.document, ...initialState.documents] },
       report,
       Object.fromEntries(report.days.map((day) => [day.date, day.amount])),
+      240,
       "RE-010620263320_Tagesverkäufe.pdf",
     )).toThrow(/bereits/);
   });
