@@ -88,8 +88,7 @@ export function LedgerPage() {
     document.body.classList.add("ledger-printing");
     const cleanup = () => document.body.classList.remove("ledger-printing");
     window.addEventListener("afterprint", cleanup, { once: true });
-    window.setTimeout(() => window.print(), 80);
-    window.setTimeout(cleanup, 1500);
+    window.setTimeout(() => window.print(), 120);
   }
 
   function exportCsv() {
@@ -142,7 +141,7 @@ export function LedgerPage() {
           const isExpense = entry.direction === "expense";
           const effect = entryCashEffect(entry);
           const unresolved = isUnresolvedKasEntry(entry);
-          return <tr key={entry.id} className="cashbook-row" tabIndex={0} onClick={() => setSelectedEntryId(entry.id)} onKeyDown={(event) => { if (event.key === "Enter") setSelectedEntryId(entry.id); }}><td>{formatDate(entry.date)}</td><td><strong>{entry.documentNumber || "-"}</strong>{entry.attachmentDataUrl ? <small>Beleg gespeichert</small> : null}</td><td className="money-positive">{effect > 0 ? formatCurrency(effect) : ""}</td><td className="money-negative">{effect < 0 ? formatCurrency(Math.abs(effect)) : ""}</td><td>{entry.taxMode === "differential" ? "25a" : entry.taxRate ? `${entry.taxRate} %` : "-"}</td><td>{isIncome && entry.taxAmount ? formatCurrency(entry.taxAmount) : ""}</td><td>{isExpense && entry.taxAmount ? formatCurrency(entry.taxAmount) : ""}</td><td>{isIncome ? formatCurrency(entry.netAmount ?? entry.amount - entry.taxAmount) : ""}</td><td>{isExpense ? formatCurrency(entry.netAmount ?? entry.amount - entry.taxAmount) : ""}</td><td><strong>{formatCurrency(balance)}</strong></td><td><strong>{displayAccountCode(entry)}</strong><small>{displayAccountLabel(entry)}</small></td><td><strong>{entry.description}</strong><small>{entry.direction === "transfer" ? transferLabel(entry) : `${paymentLabel(entry.paymentMethod)} · ${ledgerSourceLabel(entry)}`}</small>{isKasImportEntry(entry) ? <span className="document-actions"><Badge tone={unresolved ? "warning" : "success"}>{unresolved ? "Offen" : "OK"}</Badge></span> : null}</td></tr>;
+          return <tr key={entry.id} className="cashbook-row" tabIndex={0} onClick={() => setSelectedEntryId(entry.id)} onKeyDown={(event) => { if (event.key === "Enter") setSelectedEntryId(entry.id); }}><td>{formatDate(entry.date)}</td><td><strong>{entry.documentNumber || "-"}</strong>{entry.attachmentDataUrl ? <small>Beleg gespeichert</small> : null}</td><td className="money-positive">{effect > 0 ? formatCurrency(effect) : ""}</td><td className="money-negative">{effect < 0 ? formatCurrency(Math.abs(effect)) : ""}</td><td>{entry.taxMode === "differential" ? "25a" : entry.taxRate ? `${entry.taxRate} %` : "-"}</td><td>{isIncome && entry.taxAmount ? formatCurrency(entry.taxAmount) : ""}</td><td>{isExpense && entry.taxAmount ? formatCurrency(entry.taxAmount) : ""}</td><td>{isIncome ? formatCurrency(entry.netAmount ?? entry.amount - entry.taxAmount) : ""}</td><td>{isExpense ? formatCurrency(entry.netAmount ?? entry.amount - entry.taxAmount) : ""}</td><td><strong>{formatCurrency(balance)}</strong></td><td><strong>{displayAccountCode(entry)}</strong><small>{displayAccountLabel(entry)}</small></td><td><strong>{entry.description}</strong><small>{entry.direction === "transfer" ? transferLabel(entry) : `${paymentLabel(entry.paymentMethod)} · ${ledgerSourceLabel(entry)}`}</small>{isKasImportEntry(entry) ? <span className="document-actions"><Badge tone={unresolved ? "warning" : "success"}>{unresolved ? "Ungeklart" : "Gepruft"}</Badge></span> : null}</td></tr>;
         })}</tbody><tfoot><tr><td colSpan={2}><strong>Gesamt {monthLabel(month)}</strong></td><td>{formatCurrency(cashIncome)}</td><td>{formatCurrency(cashExpense)}</td><td /><td>{formatCurrency(outputTax)}</td><td>{formatCurrency(inputTax)}</td><td>{formatCurrency(tradeIncome - outputTax)}</td><td>{formatCurrency(tradeExpense - inputTax)}</td><td><strong>{formatCurrency(ending)}</strong></td><td colSpan={2} /></tr></tfoot></table></div> : <EmptyState icon="ledger" title="Keine Buchungen gefunden" text="Automatische, importierte und manuelle Kassenvorgange erscheinen hier." action={<Button onClick={() => startBooking("income")}>Buchung erfassen</Button>} />}
       </Card>
     </>}
@@ -152,8 +151,74 @@ export function LedgerPage() {
   </div>;
 }
 
-function LedgerPrintDocument({ rows, month, opening, ending, cashIncome, cashExpense, outputTax, inputTax, settings, includeReceipts }: { rows: Array<{ entry: LedgerEntry; balance: number }>; month: string; opening: number; ending: number; cashIncome: number; cashExpense: number; outputTax: number; inputTax: number; settings: { businessName: string; ownerName: string; street: string; postalCode: string; city: string; taxNumber: string }; includeReceipts: boolean }) {
-  return <div className="ledger-print-source"><div className="ledger-print-document"><header className="ledger-print-head"><div><h1>Kassenbuch</h1><p>{monthLabel(month)}</p></div><div><strong>{settings.businessName}</strong><span>{settings.ownerName}</span><span>{settings.street}</span><span>{settings.postalCode} {settings.city}</span>{settings.taxNumber ? <span>Steuernr. {settings.taxNumber}</span> : null}</div></header><section className="ledger-print-summary"><div><span>Anfangsbestand</span><strong>{formatCurrency(opening)}</strong></div><div><span>Kasseneinnahmen</span><strong>{formatCurrency(cashIncome)}</strong></div><div><span>Kassenausgaben</span><strong>{formatCurrency(cashExpense)}</strong></div><div><span>Kassenendbestand</span><strong>{formatCurrency(ending)}</strong></div><div><span>USt</span><strong>{formatCurrency(outputTax)}</strong></div><div><span>VSt</span><strong>{formatCurrency(inputTax)}</strong></div></section><table className="ledger-print-table"><thead><tr><th>Datum</th><th>Beleg</th><th>Einnahmen</th><th>Ausgaben</th><th>MwSt.</th><th>USt</th><th>VSt</th><th>Saldo</th><th>Konto</th><th>Text</th></tr></thead><tbody>{rows.map(({ entry, balance }) => { const effect = entryCashEffect(entry); const isIncome = entry.direction === "income"; const isExpense = entry.direction === "expense"; return <tr key={entry.id}><td>{formatDate(entry.date)}</td><td>{entry.documentNumber || "-"}{includeReceipts && entry.attachmentFileName ? <small>{entry.attachmentFileName}</small> : null}</td><td>{effect > 0 ? formatCurrency(effect) : ""}</td><td>{effect < 0 ? formatCurrency(Math.abs(effect)) : ""}</td><td>{entry.taxMode === "differential" ? "25a" : entry.taxRate ? `${entry.taxRate} %` : "-"}</td><td>{isIncome && entry.taxAmount ? formatCurrency(entry.taxAmount) : ""}</td><td>{isExpense && entry.taxAmount ? formatCurrency(entry.taxAmount) : ""}</td><td>{formatCurrency(balance)}</td><td>{displayAccountCode(entry)}<small>{displayAccountLabel(entry)}</small></td><td>{entry.description}<small>{includeReceipts ? entry.note || "" : ""}</small></td></tr>; })}</tbody></table></div></div>;
+function LedgerPrintDocument({
+  rows,
+  month,
+  opening,
+  ending,
+  cashIncome,
+  cashExpense,
+  outputTax,
+  inputTax,
+  settings,
+  includeReceipts,
+}: {
+  rows: Array<{ entry: LedgerEntry; balance: number }>;
+  month: string;
+  opening: number;
+  ending: number;
+  cashIncome: number;
+  cashExpense: number;
+  outputTax: number;
+  inputTax: number;
+  settings: { businessName: string; ownerName: string; street: string; postalCode: string; city: string; taxNumber: string };
+  includeReceipts: boolean;
+}) {
+  return <div className="ledger-print-source">
+    <div className="ledger-print-document">
+      <header className="ledger-print-head">
+        <div>
+          <h1>Kassenbuch</h1>
+          <p>{monthLabel(month)}</p>
+        </div>
+        <div>
+          <strong>{settings.businessName}</strong>
+          <span>{settings.ownerName}</span>
+          <span>{settings.street}</span>
+          <span>{settings.postalCode} {settings.city}</span>
+          {settings.taxNumber ? <span>Steuernr. {settings.taxNumber}</span> : null}
+        </div>
+      </header>
+      <section className="ledger-print-summary">
+        <div><span>Anfangsbestand</span><strong>{formatCurrency(opening)}</strong></div>
+        <div><span>Kasseneinnahmen</span><strong>{formatCurrency(cashIncome)}</strong></div>
+        <div><span>Kassenausgaben</span><strong>{formatCurrency(cashExpense)}</strong></div>
+        <div><span>Kassenendbestand</span><strong>{formatCurrency(ending)}</strong></div>
+        <div><span>USt</span><strong>{formatCurrency(outputTax)}</strong></div>
+        <div><span>VSt</span><strong>{formatCurrency(inputTax)}</strong></div>
+      </section>
+      <table className="ledger-print-table">
+        <thead><tr><th>Datum</th><th>Beleg</th><th>Einnahmen</th><th>Ausgaben</th><th>MwSt.</th><th>USt</th><th>VSt</th><th>Saldo</th><th>Konto</th><th>Text</th></tr></thead>
+        <tbody>{rows.map(({ entry, balance }) => {
+          const effect = entryCashEffect(entry);
+          const isIncome = entry.direction === "income";
+          const isExpense = entry.direction === "expense";
+          return <tr key={entry.id}>
+            <td>{formatDate(entry.date)}</td>
+            <td>{entry.documentNumber || "-"}{includeReceipts && entry.attachmentFileName ? <small>{entry.attachmentFileName}</small> : null}</td>
+            <td>{effect > 0 ? formatCurrency(effect) : ""}</td>
+            <td>{effect < 0 ? formatCurrency(Math.abs(effect)) : ""}</td>
+            <td>{entry.taxMode === "differential" ? "25a" : entry.taxRate ? `${entry.taxRate} %` : "-"}</td>
+            <td>{isIncome && entry.taxAmount ? formatCurrency(entry.taxAmount) : ""}</td>
+            <td>{isExpense && entry.taxAmount ? formatCurrency(entry.taxAmount) : ""}</td>
+            <td>{formatCurrency(balance)}</td>
+            <td>{displayAccountCode(entry)}<small>{displayAccountLabel(entry)}</small></td>
+            <td>{entry.description}<small>{includeReceipts ? entry.note || "" : ""}</small></td>
+          </tr>;
+        })}</tbody>
+      </table>
+    </div>
+  </div>;
 }
 
 function AccountPlan({ ledger }: { ledger: LedgerEntry[] }) { const accounts = buildReviewAccountOptions(ledger); return <Card><div className="card-heading"><div><h2>Kontenplan</h2><p>Voreingestellte und aus KAS-Backups uebernommene Konten.</p></div></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Nummer</th><th>Bezeichnung</th><th>Typ</th><th>MwSt.</th></tr></thead><tbody>{accounts.map((item) => <tr key={item.code}><td><strong>{item.code}</strong></td><td>{item.label}</td><td><Badge>{item.side === "in" ? "Einnahmen" : item.side === "out" ? "Ausgaben" : "Neutral"}</Badge></td><td>{item.vat ? `${item.vat} %` : "-"}</td></tr>)}</tbody></table></div></Card>; }
