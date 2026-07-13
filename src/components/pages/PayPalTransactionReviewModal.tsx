@@ -10,7 +10,7 @@ import {
 } from "@/lib/paypal-bookkeeping";
 import { useKassenStore } from "@/lib/store";
 import type { ImportedTransaction, LedgerDirection, PaymentMethod } from "@/lib/types";
-import { Badge, Button, Field, Input, Modal, Select } from "../ui";
+import { Button, Field, Input, Modal, Select } from "../ui";
 
 export function PayPalTransactionReviewModal({
   transaction,
@@ -22,12 +22,7 @@ export function PayPalTransactionReviewModal({
   onSaved: (message: string) => void;
 }) {
   return transaction ? (
-    <PayPalReviewForm
-      key={transaction.id}
-      transaction={transaction}
-      onClose={onClose}
-      onSaved={onSaved}
-    />
+    <PayPalReviewForm transaction={transaction} onClose={onClose} onSaved={onSaved} />
   ) : null;
 }
 
@@ -41,146 +36,40 @@ function PayPalReviewForm({
   onSaved: (message: string) => void;
 }) {
   const { state, replaceState } = useKassenStore();
-  const ledgerEntry = transaction.matchedLedgerEntryId
-    ? state.ledger.find((entry) => entry.id === transaction.matchedLedgerEntryId)
-    : undefined;
-  const initialDirection: LedgerDirection =
-    ledgerEntry?.direction ||
-    (transaction.transactionType === "refund" || transaction.amount > 0 ? "income" : "expense");
-  const [description, setDescription] = useState(
-    ledgerEntry?.description || transaction.counterparty || transaction.description,
-  );
-  const [accountCode, setAccountCode] = useState(
-    ledgerEntry?.accountCode || transaction.suggestedAccountCode || "0000",
-  );
-  const [taxRate, setTaxRate] = useState<0 | 7 | 19>(
-    ledgerEntry?.taxRate === 7 ? 7 : ledgerEntry?.taxRate === 19 ? 19 : 0,
-  );
-  const [direction, setDirection] = useState<LedgerDirection>(initialDirection);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-    ledgerEntry?.paymentMethod || "paypal",
-  );
-  const [error, setError] = useState("");
-
-  const accountOptions = useMemo(() => {
-    if (direction === "income") {
-      return BOOKING_CATEGORIES.filter(
-        (account) => account.side === "in" || ["3200", "3400", "4610", "4930", "4980"].includes(account.code),
-      );
-    }
-    return BOOKING_CATEGORIES.filter((account) => account.side === "out" || account.code === "0000");
-  }, [direction]);
-  const selectedAccount = BOOKING_CATEGORIES.find((account) => account.code === accountCode);
-  const differential = ["3290", "8336", "8390"].includes(accountCode);
-  const amount = Math.abs(transaction.grossAmount ?? transaction.amount);
-  const taxAmount = differential || taxRate === 0
-    ? 0
-    : Math.round(parseDecimal(String(amount)) * taxRate / (100 + taxRate) * 100) / 100;
-
-  function changeAccount(code: string) {
-    setAccountCode(code);
-    const account = BOOKING_CATEGORIES.find((item) => item.code === code);
-    if (account) setTaxRate(account.vat);
-  }
+  const internal = isInternalTransfer(transaction);
+  const [direction, setDirection] = useState<LedgerDirection>(transaction.amount >= 0 ? "income" : "expense");
+  const [accountCode, setAccountCode] = useState(direction === "income" ? "8400" : "4970");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("paypal");
+  const [amount, setAmount] = useState(formatMoneyInput(Math.abs(transaction.amount)));
+  const [taxRate, setTaxRate] = useState<number>(direction === "income" ? 19 : 0);
+  const [description, setDescription] = useState(transaction.description || transaction.counterparty || "PayPal-Umsatz");
+  const accountOptions = useMemo(() => BOOKING_CATEGORIES.filter((account) => direction === "income" ? account.side === "in" || account.code === accountCode : direction === "expense" ? account.side === "out" || account.code === accountCode : account.side === "neutral" || account.code === accountCode), [accountCode, direction]);
 
   function save() {
-    setError("");
     try {
-      const next = reviewPayPalTransaction(state, transaction.id, {
-        description,
-        accountCode,
-        taxRate: differential ? 0 : taxRate,
+      const result = reviewPayPalTransaction(state, transaction.id, {
         direction,
+        accountCode,
         paymentMethod,
+        amount: parseDecimal(amount),
+        taxRate,
+        description,
       });
-      replaceState(next);
-      onSaved(
-        `${transaction.counterparty || transaction.description} wurde geprüft und auf ${accountCode} gebucht.`,
-      );
+      replaceState(result.state);
+      onSaved(`PayPal-Zahlung wurde geprüft und auf ${accountCode} gebucht.`);
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Die PayPal-Buchung konnte nicht gespeichert werden.");
+      onSaved(cause instanceof Error ? cause.message : "PayPal-Zahlung konnte nicht geprüft werden.");
     }
   }
 
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="PayPal-Buchung prüfen"
-      wide
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Abbrechen</Button>
-          <Button onClick={save}>Prüfung speichern</Button>
-        </>
-      }
-    >
-      <div className="form-stack">
-        {isInternalTransfer(transaction) ? (
-          <div className="alert alert-info">Diese Zeile ist eine interne Umbuchung und keine Einnahme oder Ausgabe.</div>
-        ) : (
-          <div className="alert alert-warning">
-            PayPal liefert keine verlässliche Vorsteuer. Steuersatz und Konto dürfen erst nach Prüfung der Rechnung bestätigt werden.
-          </div>
-        )}
-        {error ? <div className="alert alert-danger">{error}</div> : null}
-        <div className="form-grid two">
-          <Field label="Gegenpartei">
-            <div className="input">{transaction.counterparty || "PayPal"}</div>
-          </Field>
-          <Field label="Betrag">
-            <div className="input">{formatCurrency(amount)}</div>
-          </Field>
-          <Field label="Text">
-            <Input value={description} onChange={(event) => setDescription(event.target.value)} />
-          </Field>
-          <Field label="Vorgang">
-            <Select value={direction} onChange={(event) => setDirection(event.target.value as LedgerDirection)}>
-              <option value="expense">Ausgabe</option>
-              <option value="income">Einnahme / Erstattung</option>
-            </Select>
-          </Field>
-          <Field label="Buchungskonto">
-            <Select value={accountCode} onChange={(event) => changeAccount(event.target.value)}>
-              {accountOptions.map((account) => (
-                <option key={account.code} value={account.code}>
-                  {account.code} · {account.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Zahlungsweg">
-            <Select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}>
-              <option value="paypal">PayPal</option>
-              <option value="bank">Bank</option>
-              <option value="card">Karte</option>
-              <option value="cash">Bar</option>
-            </Select>
-          </Field>
-          <Field label="Steuersatz">
-            <Select
-              value={differential ? 0 : taxRate}
-              disabled={differential}
-              onChange={(event) => setTaxRate(Number(event.target.value) as 0 | 7 | 19)}
-            >
-              <option value={0}>0 % / noch nicht geprüft</option>
-              <option value={7}>7 %</option>
-              <option value={19}>19 %</option>
-            </Select>
-          </Field>
-          <Field label="Rechnung / Referenz">
-            <div className="input">{transaction.invoiceNumber || transaction.externalId || "–"}</div>
-          </Field>
-        </div>
-        <div className="calculation-box">
-          <h3>Kontrollvorschau</h3>
-          <div><span>Konto</span><strong>{selectedAccount ? `${selectedAccount.code} · ${selectedAccount.label}` : "Nicht zugeordnet"}</strong></div>
-          <div><span>Brutto</span><strong>{formatCurrency(amount)}</strong></div>
-          <div><span>Enthaltene Steuer</span><strong>{formatCurrency(taxAmount)}</strong></div>
-          <div><span>Netto</span><strong>{formatCurrency(amount - taxAmount)}</strong></div>
-        </div>
-      </div>
-    </Modal>
-  );
+  return <Modal open title="Zahlungsdienstleister prüfen" onClose={onClose} wide footer={<><Button variant="secondary" onClick={onClose}>Abbrechen</Button>{!internal ? <Button onClick={save}>Prüfung speichern</Button> : null}</>}>
+    {internal ? <div className="alert alert-info">Diese Zahlung ist eine interne Umbuchung zwischen Bank und Zahlungsdienstleister. Sie erzeugt keine neue Einnahme oder Ausgabe.</div> : null}
+    <div className="calculation-box"><h3>Umsatz</h3><div><span>Betrag</span><strong>{formatCurrency(transaction.amount)}</strong></div><div><span>Gegenpartei</span><strong>{transaction.counterparty || "-"}</strong></div><div><span>Referenz</span><strong>{transaction.externalId || "-"}</strong></div></div>
+    {!internal ? <div className="form-grid two"><Field label="Art"><Select value={direction} onChange={(event) => setDirection(event.target.value as LedgerDirection)}><option value="income">Einnahme</option><option value="expense">Ausgabe</option><option value="transfer">Umbuchung</option></Select></Field><Field label="Konto"><Select value={accountCode} onChange={(event) => setAccountCode(event.target.value)}>{accountOptions.map((account) => <option key={account.code} value={account.code}>{account.code} · {account.label}</option>)}</Select></Field><Field label="Zahlungsart"><Select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}><option value="paypal">PayPal</option><option value="bank">Bank</option><option value="card">Karte</option><option value="cash">Bar</option></Select></Field><Field label="Betrag"><Input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} /></Field><Field label="MwSt."><Select value={taxRate} onChange={(event) => setTaxRate(Number(event.target.value))}><option value={19}>19 %</option><option value={7}>7 %</option><option value={0}>0 %</option></Select></Field><Field label="Text"><Input value={description} onChange={(event) => setDescription(event.target.value)} /></Field></div> : null}
+  </Modal>;
+}
+
+function formatMoneyInput(value: number): string {
+  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
