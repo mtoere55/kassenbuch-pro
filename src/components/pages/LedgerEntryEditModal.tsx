@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { BOOKING_CATEGORIES, getBookingCategory } from "@/lib/accounts";
 import { calculateDifferentialTax, formatCurrency, formatDate } from "@/lib/accounting";
 import { entryCashEffect, includedTax, parseMoney } from "@/lib/manual-booking";
@@ -19,9 +19,6 @@ export function LedgerEntryEditModal({ entry, onClose, onSaved }: Props) {
   const relatedDevice = relatedDocument?.deviceId ? state.devices.find((device) => device.id === relatedDocument.deviceId) : undefined;
   const [draft, setDraft] = useState<EntryDraft>(() => createDraft(entry, relatedDocument?.documentNumber));
   const [error, setError] = useState("");
-
-  useEffect(() => { setDraft(createDraft(entry, relatedDocument?.documentNumber)); setError(""); }, [entry, relatedDocument?.documentNumber]);
-
   const amount = parseMoney(draft.amount);
   const isDifferentialSale = Boolean(entry?.taxMode === "differential" && draft.direction === "income" && relatedDevice);
   const taxAmount = calculateEntryTax(amount, draft.taxRate, isDifferentialSale, relatedDevice?.purchasePrice);
