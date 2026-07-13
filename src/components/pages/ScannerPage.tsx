@@ -21,7 +21,7 @@ export function ScannerPage() {
           <strong>{scan.file ? scan.file.name : "Dokument oder Exportdatei auswählen"}</strong>
           <small>PDF auch ohne .pdf-Endung, JPG, PNG, WEBP, CSV, TXT, TSV · bis 20 MB</small>
         </label>
-        {scan.preview ? <div className="scan-preview">{scan.isPdf ? <object data={scan.preview} type="application/pdf" className="pdf-preview"><a href={scan.preview}>PDF öffnen</a></object> : <img src={scan.preview} alt="Belegvorschau" />}</div> : null}
+        {scan.preview ? <div className="scan-preview">{scan.isPdf ? <object data={scan.preview} type="application/pdf" className="pdf-preview"><a href={scan.preview}>PDF öffnen</a></object> : <PreviewImage src={scan.preview} />}</div> : null}
         <Button className="full-button" disabled={!scan.file || scan.isProcessing} onClick={() => void scan.scan()}>{scan.isProcessing ? `Dokument wird gelesen ${scan.progress}%` : "Universal Import auslesen"}</Button>
         {scan.isProcessing ? <div className="progress"><span style={{ width: `${scan.progress}%` }} /></div> : null}
         <div className="alert alert-info">Alle Spezialimporte laufen künftig hier zusammen. Wenn das Dokument nicht sicher erkannt wird, bleibt es als Eingangsrechnung/Beleg manuell prüfbar.</div>
@@ -38,4 +38,9 @@ export function ScannerPage() {
     </div>
     {scan.ocrText ? <Card><details><summary>Ausgelesener Rohtext anzeigen</summary><pre className="ocr-text">{scan.ocrText}</pre></details></Card> : null}
   </div>;
+}
+
+function PreviewImage({ src }: { src: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="Belegvorschau" />;
 }
