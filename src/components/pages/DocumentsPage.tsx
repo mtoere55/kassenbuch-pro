@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/accounting";
 import {
   getSupplierAccount,
@@ -10,7 +10,7 @@ import {
 import { parseDecimal, validateSupplierInvoiceAmounts } from "@/lib/invoice-validation";
 import { useKassenStore } from "@/lib/store";
 import type { BusinessDocument, DocumentType } from "@/lib/types";
-import { DocumentView } from "../DocumentView";
+import { DocumentView, printDocumentView } from "../DocumentView";
 import { Icon } from "../Icon";
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select } from "../ui";
 import {
@@ -39,10 +39,10 @@ export function DocumentsPage() {
     return counts;
   }, [state.documents]);
 
-  function isDuplicate(document: BusinessDocument) {
+  const isDuplicate = useCallback((document: BusinessDocument) => {
     const key = supplierInvoiceKeyFromDocument(document);
     return Boolean(key && (duplicateCounts.get(key) || 0) > 1);
-  }
+  }, [duplicateCounts]);
 
   const duplicateDocumentCount = state.documents.filter(isDuplicate).length;
 
@@ -60,18 +60,18 @@ export function DocumentsPage() {
         device?.model,
         device?.imei1,
         document.metadata?.vendor,
+        document.metadata?.repairNumber,
+        document.metadata?.repairBrand,
+        document.metadata?.repairModel,
         document.originalFileName,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+      ].filter(Boolean).join(" ").toLowerCase();
       return (
         (type === "all" || document.type === type) &&
         (!duplicatesOnly || isDuplicate(document)) &&
         (!needle || text.includes(needle))
       );
     });
-  }, [duplicatesOnly, duplicateCounts, query, state.customers, state.devices, state.documents, type]);
+  }, [duplicatesOnly, isDuplicate, query, state.customers, state.devices, state.documents, type]);
 
   function canDelete(document?: BusinessDocument) {
     return document?.type === "supplierInvoice" || document?.type === "zReport";
@@ -205,7 +205,7 @@ export function DocumentsPage() {
     setError("");
     setMessage("");
     if (!canDelete(document)) {
-      setError("Verkaufsrechnungen und Ankaufverträge müssen später über eine Stornofunktion korrigiert werden.");
+      setError("Verkaufsrechnungen, Quittungen, Kostenvoranschläge und Ankaufverträge müssen über den jeweiligen Vorgang korrigiert werden.");
       return;
     }
 
@@ -250,7 +250,7 @@ export function DocumentsPage() {
     <div>
       <PageHeader
         title="Dokumente"
-        subtitle="Rechnungen, Quittungen, Ankaufverträge und gescannte Belege."
+        subtitle="Rechnungen, Quittungen, Kostenvoranschläge, Ankaufverträge und gescannte Belege."
       />
       {message ? <div className="alert alert-success">{message}</div> : null}
       {error ? <div className="alert alert-danger">{error}</div> : null}
@@ -284,6 +284,7 @@ export function DocumentsPage() {
             <option value="all">Alle Dokumente</option>
             <option value="invoice">Rechnungen</option>
             <option value="receipt">Quittungen</option>
+            <option value="estimate">Kostenvoranschläge</option>
             <option value="purchaseContract">Ankaufverträge</option>
             <option value="supplierInvoice">Eingangsrechnungen</option>
             <option value="zReport">Tagesabschlüsse</option>
@@ -296,7 +297,7 @@ export function DocumentsPage() {
             text={
               duplicatesOnly
                 ? "Zurzeit wurden keine Dubletten gefunden."
-                : "Neue Belege entstehen automatisch aus Verkauf, Ankauf oder Scanner."
+                : "Neue Belege entstehen automatisch aus Verkauf, Ankauf, Reparatur oder Universal Beleg Import."
             }
           />
         ) : (
@@ -311,6 +312,7 @@ export function DocumentsPage() {
                   const device = state.devices.find((item) => item.id === document.deviceId);
                   const difference = Number(document.metadata?.difference ?? 0);
                   const duplicate = isDuplicate(document);
+                  const repairText = [document.metadata?.repairBrand, document.metadata?.repairModel].filter(Boolean).join(" ");
                   return (
                     <tr key={document.id}>
                       <td><strong>{document.documentNumber}</strong><small>{documentTypeLabel(document.type)}</small></td>
@@ -319,22 +321,24 @@ export function DocumentsPage() {
                         <span>
                           {customer
                             ? customer.company || `${customer.firstName} ${customer.lastName}`
-                            : String(document.metadata?.vendor || "–")}
+                            : String(document.metadata?.vendor || document.metadata?.repairNumber || "–")}
                         </span>
                         <small>
                           {device
                             ? `${device.brand} ${device.model} · ${device.imei1}`
-                            : document.originalFileName || ""}
+                            : repairText || document.originalFileName || ""}
                         </small>
                       </td>
                       <td>
                         <strong>{formatCurrency(document.amount)}</strong>
                         <small>
-                          {document.taxMode === "differential"
-                            ? "§25a"
-                            : document.taxAmount
-                              ? `${formatCurrency(document.taxAmount)} Steuer`
-                              : ""}
+                          {document.type === "estimate"
+                            ? "nicht gebucht"
+                            : document.taxMode === "differential"
+                              ? "§25a"
+                              : document.taxAmount
+                                ? `${formatCurrency(document.taxAmount)} Steuer`
+                                : ""}
                         </small>
                       </td>
                       <td>
@@ -410,7 +414,7 @@ export function DocumentsPage() {
                 </Button>
               ) : null}
               <Button variant="secondary" onClick={closeDocument}>Schließen</Button>
-              <Button icon="print" onClick={() => window.print()}>Drucken</Button>
+              <Button icon="print" onClick={printDocumentView}>Drucken</Button>
             </>
           )
         }
@@ -433,6 +437,7 @@ function documentTypeLabel(type: DocumentType) {
   return ({
     invoice: "Rechnung",
     receipt: "Quittung",
+    estimate: "Kostenvoranschlag",
     purchaseContract: "Ankaufvertrag",
     zReport: "Tagesabschluss",
     supplierInvoice: "Eingangsrechnung",
@@ -458,6 +463,13 @@ function metadataLabel(key: string) {
     automaticallyBooked: "Automatisch gebucht",
     manuallyCorrected: "Manuell korrigiert",
     duplicateKey: "Dublettenschlüssel",
+    repairNumber: "Service Nr.",
+    repairBrand: "Marke",
+    repairModel: "Modell",
+    repairImei: "IMEI",
+    repairSerialNumber: "Seriennummer",
+    repairIssue: "Fehlerbeschreibung",
+    repairWorkDescription: "Leistung",
   } as Record<string, string>)[key] || key;
 }
 
