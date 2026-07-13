@@ -28,12 +28,12 @@ export function FlatpayReportImportModal({
   const { state, replaceState } = useKassenStore();
   const [file, setFile] = useState<File>();
   const [report, setReport] = useState<FlatpaySalesReport>();
-  const [bookFees, setBookFees] = useState(false);
+  const [zeroCash, setZeroCash] = useState("0,00");
+  const [zeroCard, setZeroCard] = useState("0,00");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const validation = useMemo(() => report ? validateFlatpaySalesReport(report) : undefined, [report]);
   const comparison = useMemo(() => report ? compareFlatpayReportToLedger(report, state.ledger) : undefined, [report, state.ledger]);
-  const feeAmount = report ? parseDecimal(String(report.feesGross)) : 0;
 
   async function selectFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0];
@@ -46,6 +46,8 @@ export function FlatpayReportImportModal({
       const parsed = parseFlatpaySalesReport(text);
       setFile(selected);
       setReport(parsed);
+      setZeroCash(formatMoneyInput(parsed.zeroGross));
+      setZeroCard("0,00");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Flatpay-Bericht konnte nicht gelesen werden.");
     } finally {
@@ -57,12 +59,22 @@ export function FlatpayReportImportModal({
     if (!report || !file || !validation?.valid) return;
     try {
       const dataUrl = file.size <= MAX_INLINE_BYTES ? await fileToDataUrl(file) : undefined;
-      const plan = createFlatpayImportPlan(state, report, { bookFees, fileName: file.name, fileDataUrl: dataUrl });
+      const plan = createFlatpayImportPlan(
+        state,
+        report,
+        { zeroCash: parseDecimal(zeroCash), zeroCard: parseDecimal(zeroCard) },
+        file.name,
+        dataUrl,
+      );
       replaceState({ ...state, documents: [plan.document, ...state.documents], ledger: [...plan.entries, ...state.ledger] });
-      onImported(`Flatpay ${report.periodLabel} wurde übernommen: ${plan.createdEntries} Buchung(en), ${formatCurrency(report.totalGross)} Umsatzabgleich.`);
+      onImported(
+        `Flatpay ${periodLabel(report)} wurde übernommen: ${plan.entries.length} Buchung(en), ${formatCurrency(report.totalSales)} Umsatzabgleich.` +
+          (plan.alreadyMatched ? " Vorhandene Kassenbuch-Buchungen passen bereits." : ""),
+      );
       setFile(undefined);
       setReport(undefined);
-      setBookFees(false);
+      setZeroCash("0,00");
+      setZeroCard("0,00");
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Flatpay-Bericht konnte nicht importiert werden.");
@@ -74,7 +86,27 @@ export function FlatpayReportImportModal({
       {error ? <div className="alert alert-danger">{error}</div> : null}
       <Field label="Flatpay PDF"><Input type="file" accept="application/pdf,.pdf" onChange={(event) => void selectFile(event)} /></Field>
       {loading ? <div className="scanner-placeholder"><p>PDF wird gelesen …</p></div> : null}
-      {report ? <><div className="stat-grid"><StatCard label="Zeitraum" value={report.periodLabel} detail={`${formatDate(report.startDate)} – ${formatDate(report.endDate)}`} /><StatCard label="Umsatz" value={formatCurrency(report.totalGross)} /><StatCard label="Gebühren" value={formatCurrency(feeAmount)} tone="negative" /><StatCard label="Auszahlung" value={formatCurrency(report.payout)} tone="positive" /></div>{validation?.warnings.length ? <div className="alert alert-warning">{validation.warnings.join(" ")}</div> : null}{comparison ? <div className="calculation-box"><h3>Abgleich</h3><div><span>Flatpay Umsatz</span><strong>{formatCurrency(comparison.reportTotal)}</strong></div><div><span>Kassenbuch Karte</span><strong>{formatCurrency(comparison.ledgerCardTotal)}</strong></div><div><span>Differenz</span><strong>{formatCurrency(comparison.difference)}</strong></div></div> : null}<label className="toggle-line"><input type="checkbox" checked={bookFees} onChange={(event) => setBookFees(event.target.checked)} /> Gebühren jetzt als Aufwand buchen</label></> : null}
+      {report ? <>
+        <div className="stat-grid">
+          <StatCard label="Zeitraum" value={periodLabel(report)} detail={`${formatDate(report.startDate)} – ${formatDate(report.endDate)}`} />
+          <StatCard label="Umsatz" value={formatCurrency(report.totalSales)} />
+          <StatCard label="0 % Umsatz" value={formatCurrency(report.zeroGross)} />
+          <StatCard label="19 % Umsatz" value={formatCurrency(report.standardGross)} detail={`MwSt. ${formatCurrency(report.standardVat)}`} tone="positive" />
+        </div>
+        {validation?.issues.length ? <div className="alert alert-warning">{validation.issues.join(" ")}</div> : null}
+        {comparison ? <div className="calculation-box">
+          <h3>Abgleich</h3>
+          <div><span>Flatpay Umsatz</span><strong>{formatCurrency(report.totalSales)}</strong></div>
+          <div><span>Kassenbuch Umsatz</span><strong>{formatCurrency(comparison.total)}</strong></div>
+          <div><span>Differenz Gesamt</span><strong>{formatCurrency(comparison.differences.total)}</strong></div>
+          <div><span>Differenz Karte</span><strong>{formatCurrency(comparison.differences.card)}</strong></div>
+        </div> : null}
+        <div className="form-grid two">
+          <Field label="0-% Umsatz Bar"><Input inputMode="decimal" value={zeroCash} onChange={(event) => setZeroCash(event.target.value)} /></Field>
+          <Field label="0-% Umsatz Karte"><Input inputMode="decimal" value={zeroCard} onChange={(event) => setZeroCard(event.target.value)} /></Field>
+        </div>
+        <div className="alert alert-info">Die Aufteilung der 0-% Umsätze muss zusammen {formatCurrency(report.zeroGross)} ergeben. Standardmäßig wird sie als Bar angesetzt und kann hier korrigiert werden.</div>
+      </> : null}
     </div>
   </Modal>;
 }
@@ -106,4 +138,12 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function periodLabel(report: FlatpaySalesReport): string {
+  return `${formatDate(report.startDate)} – ${formatDate(report.endDate)}`;
+}
+
+function formatMoneyInput(value: number): string {
+  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
