@@ -1,9 +1,9 @@
-# Deployment — handyreparatur.shop
+# Deployment — kassenbuch.handyreparatur.shop
 
 Kassenbuch Pro darf im Live-Betrieb nicht unter `cidentia.live` veröffentlicht werden. Die korrekte Live-Domain ist:
 
 ```text
-https://handyreparatur.shop
+https://kassenbuch.handyreparatur.shop
 ```
 
 ## CidenDB / CID Redirect URI
@@ -11,7 +11,7 @@ https://handyreparatur.shop
 Im CidenDB SDK App-Setup muss die Redirect URI so eingetragen werden:
 
 ```text
-https://handyreparatur.shop/cid/callback
+https://kassenbuch.handyreparatur.shop/cid/callback
 ```
 
 Der Callback ist domain-neutral im Code angelegt und läuft unter:
@@ -23,16 +23,21 @@ Der Callback ist domain-neutral im Code angelegt und läuft unter:
 Beispieltest nach dem Deployment:
 
 ```text
-https://handyreparatur.shop/cid/callback?cid=CID-TEST-001
+https://kassenbuch.handyreparatur.shop/cid/callback?cid=CID-TEST-001
 ```
 
 ## DNS
 
-Für `handyreparatur.shop` muss ein A-Record auf den VPS zeigen:
+Für `kassenbuch.handyreparatur.shop` muss ein A-Record auf den VPS zeigen:
 
 ```text
-handyreparatur.shop  A  89.167.113.66
-www                  A  89.167.113.66
+kassenbuch  A  89.167.113.66
+```
+
+Optional, falls `www.kassenbuch.handyreparatur.shop` ebenfalls genutzt werden soll:
+
+```text
+www.kassenbuch  A  89.167.113.66
 ```
 
 Falls Cloudflare verwendet wird, vor dem ersten Certbot-Test optional kurz DNS-only nutzen, bis SSL sauber erstellt ist.
@@ -40,10 +45,10 @@ Falls Cloudflare verwendet wird, vor dem ersten Certbot-Test optional kurz DNS-o
 ## Nginx
 
 ```bash
-cat >/etc/nginx/sites-available/handyreparatur-shop <<'EOF'
+cat >/etc/nginx/sites-available/kassenbuch-handyreparatur-shop <<'EOF'
 server {
     listen 80;
-    server_name handyreparatur.shop www.handyreparatur.shop;
+    server_name kassenbuch.handyreparatur.shop;
 
     client_max_body_size 50M;
 
@@ -60,7 +65,7 @@ server {
 }
 EOF
 
-ln -sf /etc/nginx/sites-available/handyreparatur-shop /etc/nginx/sites-enabled/handyreparatur-shop
+ln -sf /etc/nginx/sites-available/kassenbuch-handyreparatur-shop /etc/nginx/sites-enabled/kassenbuch-handyreparatur-shop
 nginx -t
 systemctl reload nginx
 ```
@@ -68,7 +73,7 @@ systemctl reload nginx
 ## SSL
 
 ```bash
-certbot --nginx -d handyreparatur.shop -d www.handyreparatur.shop
+certbot --nginx -d kassenbuch.handyreparatur.shop
 ```
 
 ## Systemd Service
@@ -78,7 +83,7 @@ Die App läuft intern auf Port `3010`:
 ```bash
 cat >/etc/systemd/system/kassenbuch-pro.service <<'EOF'
 [Unit]
-Description=Kassenbuch Pro / handyreparatur.shop
+Description=Kassenbuch Pro / kassenbuch.handyreparatur.shop
 After=network.target
 
 [Service]
@@ -123,8 +128,8 @@ systemctl restart kassenbuch-pro
 ## Live-Test
 
 ```text
-https://handyreparatur.shop
-https://handyreparatur.shop/cid/callback?cid=CID-TEST-001
+https://kassenbuch.handyreparatur.shop
+https://kassenbuch.handyreparatur.shop/cid/callback?cid=CID-TEST-001
 ```
 
 Wenn der Callback die CID übernimmt und zurück zur Haupt-App führt, ist die CID-Rückgabe technisch korrekt angebunden.
