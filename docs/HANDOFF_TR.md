@@ -25,6 +25,28 @@ npm.cmd run dev
 
 Eğer `git status --short` boş değilse önce değişiklikleri kontrol et.
 
+## Canlı domain / deployment kuralı
+
+Kassenbuch Pro canlı yayında `cidentia.live` altında yayınlanmayacak. Root domain `handyreparatur.shop` da kullanılmayacak. Doğru canlı subdomain:
+
+```text
+https://kassenbuch.handyreparatur.shop
+```
+
+CidenDB SDK Redirect URI:
+
+```text
+https://kassenbuch.handyreparatur.shop/cid/callback
+```
+
+Deployment notu:
+
+```text
+docs/deployment-handyreparatur-shop.md
+```
+
+`cidentiaapp.com` sadece CID oluşturma / CidenDB erişim kapısı olarak kalabilir; Kassenbuch Pro uygulama domaini `kassenbuch.handyreparatur.shop` olmalı.
+
 ## Ana yön
 
 Kassenbuch Pro artık sadece Murat’ın dükkânına özel panellerden oluşmamalı. Tek doğru ürün hattı:
@@ -58,7 +80,7 @@ Kullanım:
 ```text
 Reparatur / Service
 → Kunde seç veya Laufkundschaft
-→ Marka / Modell / IMEI / Seriennummer / Code / Zubehör
+→ Marke / Modell / IMEI / Seriennummer / Code / Zubehör
 → Fehlerbeschreibung
 → Leistung / Reparaturtext
 → Dokument seç: Kostenvoranschlag, Rechnung veya Quittung
@@ -111,6 +133,15 @@ Bank & Zahlungsabgleich
 ```
 
 Burada dosya yükleme değil, import edilmiş konto hareketlerini kontrol/abgleich yapılır. Yeni dosyalar `Universal Beleg Import` üzerinden alınır. Özel provider isimleri arayüzün ana yüzünden kaldırıldı.
+
+## CID / CidenDB giriş kapısı
+
+Program açılışında `CidGateway` vardır. CID yoksa ana program açılmaz.
+
+- Manuel CID girişi localStorage içine `kassenbuch-pro.cid-session` olarak yazılır.
+- CID oluşturma bağlantısı `https://cidentiaapp.com` kalabilir.
+- Gerçek CidenDB dönüşü `/cid/callback` route’u üzerinden alınır.
+- Callback doğru canlı domainde şu olmalı: `https://kassenbuch.handyreparatur.shop/cid/callback`.
 
 ## Önceden başarıyla test edilen özel kurallar
 
