@@ -17,17 +17,20 @@ export function CidGateway({ children }: { children: (session: CidSession, logou
   const [error, setError] = useState("");
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(CID_SESSION_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as CidSession;
-        if (isValidCid(parsed.cid)) setSession(parsed);
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = window.localStorage.getItem(CID_SESSION_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as CidSession;
+          if (isValidCid(parsed.cid)) setSession(parsed);
+        }
+      } catch {
+        window.localStorage.removeItem(CID_SESSION_KEY);
+      } finally {
+        setInitialized(true);
       }
-    } catch {
-      window.localStorage.removeItem(CID_SESSION_KEY);
-    } finally {
-      setInitialized(true);
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function login() {
