@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./cid-gateway.css";
 import "./document-preview.css";
 import "./cashbook.css";
 
