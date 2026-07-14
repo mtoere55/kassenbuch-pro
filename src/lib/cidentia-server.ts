@@ -51,7 +51,7 @@ export async function verifyCidWithCidentia(cidValue: string): Promise<CidentiaS
   });
   const payload = await readJson(response);
   if (!response.ok || payload?.valid === false || payload?.verified === false || payload?.success === false) {
-    throw new Error(payload?.message || "CidenDB hat diese CID nicht bestätigt.");
+    throw new Error(errorMessage(payload, "CidenDB hat diese CID nicht bestätigt."));
   }
 
   return buildSessionFromPayload(cid, payload, "quick-verify");
@@ -82,9 +82,11 @@ export async function exchangeCidentiaCode({
     cache: "no-store",
   });
   const payload = await readJson(response);
-  if (!response.ok) throw new Error(payload?.message || "Cidentia Token konnte nicht geholt werden.");
+  if (!response.ok) throw new Error(errorMessage(payload, "Cidentia Token konnte nicht geholt werden."));
 
-  const user = payload?.user || (payload?.access_token ? await fetchCidentiaMe(payload.access_token) : undefined);
+  const accessToken = textValue(payload, ["access_token", "accessToken"]);
+  const embeddedUser = objectValue(payload, ["user", "profile", "identity"]);
+  const user = embeddedUser || (accessToken ? await fetchCidentiaMe(accessToken) : undefined);
   const cid = extractCid(user) || extractCid(payload);
   if (!cid) throw new Error("Cidentia Antwort enthält keine CID.");
   return buildSessionFromPayload(cid, user || payload, "oauth");
@@ -152,4 +154,17 @@ function numberValue(payload: Record<string, unknown> | undefined, keys: string[
     if (typeof value === "string" && value.trim() && !Number.isNaN(Number(value))) return Number(value);
   }
   return undefined;
+}
+
+function objectValue(payload: Record<string, unknown> | undefined, keys: string[]): Record<string, unknown> | undefined {
+  if (!payload) return undefined;
+  for (const key of keys) {
+    const value = payload[key];
+    if (value && typeof value === "object") return value as Record<string, unknown>;
+  }
+  return undefined;
+}
+
+function errorMessage(payload: Record<string, unknown> | undefined, fallback: string): string {
+  return textValue(payload, ["message", "error", "detail"]) || fallback;
 }
