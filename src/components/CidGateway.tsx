@@ -1,28 +1,34 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import {
+  CID_SESSION_KEY,
+  isValidCid,
+  isVerifiedCidentiaSession,
+  normalizeCid,
+  type CidentiaSession,
+} from "@/lib/cidentia-session";
 
-export interface CidSession {
-  cid: string;
-  connectedAt: string;
-}
-
-const CID_SESSION_KEY = "kassenbuch-pro.cid-session";
 const CIDENTIA_CREATE_URL = "https://cidentiaapp.com";
 
-export function CidGateway({ children }: { children: (session: CidSession, logout: () => void) => ReactNode }) {
+export function CidGateway({ children }: { children: (session: CidentiaSession, logout: () => void) => ReactNode }) {
   const [initialized, setInitialized] = useState(false);
-  const [session, setSession] = useState<CidSession>();
+  const [session, setSession] = useState<CidentiaSession>();
   const [cidInput, setCidInput] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
         const stored = window.localStorage.getItem(CID_SESSION_KEY);
         if (stored) {
-          const parsed = JSON.parse(stored) as CidSession;
-          if (isValidCid(parsed.cid)) setSession(parsed);
+          const parsed = JSON.parse(stored) as unknown;
+          if (isVerifiedCidentiaSession(parsed)) {
+            setSession(parsed);
+          } else {
+            window.localStorage.removeItem(CID_SESSION_KEY);
+          }
         }
       } catch {
         window.localStorage.removeItem(CID_SESSION_KEY);
@@ -33,16 +39,31 @@ export function CidGateway({ children }: { children: (session: CidSession, logou
     return () => window.clearTimeout(timer);
   }, []);
 
-  function login() {
+  async function login() {
     const cid = normalizeCid(cidInput);
     if (!isValidCid(cid)) {
       setError("Bitte eine gültige CID / Cidentia ID eingeben.");
       return;
     }
-    const nextSession = { cid, connectedAt: new Date().toISOString() };
-    window.localStorage.setItem(CID_SESSION_KEY, JSON.stringify(nextSession));
-    setSession(nextSession);
+    setLoading(true);
     setError("");
+    try {
+      const response = await fetch("/api/cidentia/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cid }),
+      });
+      const payload = (await response.json()) as { session?: CidentiaSession; error?: string };
+      if (!response.ok || !payload.session || !isVerifiedCidentiaSession(payload.session)) {
+        throw new Error(payload.error || "CidenDB hat diese CID nicht bestätigt.");
+      }
+      window.localStorage.setItem(CID_SESSION_KEY, JSON.stringify(payload.session));
+      setSession(payload.session);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "CID konnte nicht über CidenDB geprüft werden.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function logout() {
@@ -63,7 +84,7 @@ export function CidGateway({ children }: { children: (session: CidSession, logou
           <p className="cid-kicker">Cidentia Zugang</p>
           <h1>Kassenbuch Pro öffnen</h1>
           <p className="cid-text">
-            Dieses Kassenbuch ist an eine CID gebunden. Gib deine CID ein oder erstelle zuerst eine neue CID über Cidentia.
+            Dieses Kassenbuch öffnet nur mit bestätigter CID. Die CID wird zuerst über CidenDB geprüft.
           </p>
           {error ? <div className="cid-error">{error}</div> : null}
           <label className="cid-field">
@@ -72,15 +93,18 @@ export function CidGateway({ children }: { children: (session: CidSession, logou
               autoFocus
               value={cidInput}
               onChange={(event) => setCidInput(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") login(); }}
+              onKeyDown={(event) => { if (event.key === "Enter") void login(); }}
               placeholder="z.B. CID-..."
               autoComplete="username"
             />
           </label>
-          <button className="cid-primary" onClick={login}>Mit CID öffnen</button>
+          <button className="cid-primary" disabled={loading} onClick={() => void login()}>
+            {loading ? "CID wird über CidenDB geprüft …" : "CID prüfen und öffnen"}
+          </button>
+          <a className="cid-secondary" href="/api/cidentia/authorize">Mit Cidentia anmelden</a>
           <a className="cid-secondary" href={CIDENTIA_CREATE_URL} target="_blank" rel="noreferrer">Noch keine CID? Auf cidentiaapp.com erstellen</a>
           <div className="cid-note">
-            Aktuell wird die CID lokal im Browser gespeichert. Die echte Online-Verifikation wird später über Cidentia API / Session Token angeschlossen.
+            Direkter Zugang ohne CidenDB-Prüfung ist deaktiviert. Für Quick Verify muss der Server CIDENTIA_API_KEY haben; für OAuth braucht er Client ID und Client Secret.
           </div>
         </section>
       </main>
@@ -88,13 +112,4 @@ export function CidGateway({ children }: { children: (session: CidSession, logou
   }
 
   return children(session, logout);
-}
-
-function normalizeCid(value: string): string {
-  return value.trim().replace(/\s+/g, "").toUpperCase();
-}
-
-function isValidCid(value?: string): value is string {
-  if (!value) return false;
-  return /^[A-Z0-9._:-]{3,80}$/.test(value);
 }
