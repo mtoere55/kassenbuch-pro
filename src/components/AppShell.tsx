@@ -53,7 +53,7 @@ export function AppShell() {
         </nav>
         <div className="sidebar-bottom">
           <button className={page === "settings" ? "active" : ""} onClick={() => navigate("settings")}><Icon name="settings" width={20} height={20} /><span>{pageLabel(language, "settings")}</span></button>
-          <div className="cid-session-chip"><span>Cidentia CID</span><strong>{cidSession.cid}</strong><button onClick={logoutCid}>CID wechseln</button></div>
+          <div className="cid-session-chip"><span>{cidSession.user?.fullName || "Cidentia CID"}</span><strong>{cidSession.cid}</strong><button onClick={logoutCid}>Abmelden</button></div>
           <div className="business-chip"><div>{state.settings.businessName.slice(0, 1).toUpperCase()}</div><span><strong>{state.settings.businessName}</strong><small>Cidentia lokale Version</small></span></div>
         </div>
       </aside>
