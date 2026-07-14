@@ -49,8 +49,8 @@ export function CidCallbackClient() {
         setMessage(cause instanceof Error ? cause.message : "Cidentia Rückgabe konnte nicht geprüft werden.");
       }
     }
-    void exchange();
-    return () => { active = false; };
+    const timer = window.setTimeout(() => { void exchange(); }, 0);
+    return () => { active = false; window.clearTimeout(timer); };
   }, [code, router, state]);
 
   return (
