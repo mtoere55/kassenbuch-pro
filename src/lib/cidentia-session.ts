@@ -21,6 +21,7 @@ export interface CidentiaSession {
  */
 export const CID_SESSION_KEY = "kassenbuch-pro.cid-session";
 export const CIDENTIA_SESSION_COOKIE = "kassenbuch-pro.cid-session";
+export const CIDENTIA_SESSION_TTL_SECONDS = 12 * 60 * 60;
 
 export function normalizeCid(value: string): string {
   return value.trim().replace(/\s+/g, "").toUpperCase();
