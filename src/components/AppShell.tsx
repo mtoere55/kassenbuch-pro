@@ -4,6 +4,7 @@ import { useState } from "react";
 import { pageLabel } from "@/lib/i18n";
 import { useKassenStore } from "@/lib/store";
 import type { PageKey } from "@/lib/types";
+import { CidGateway } from "./CidGateway";
 import { Icon, type IconName } from "./Icon";
 import { AccountsPage } from "./pages/AccountsPage";
 import { CustomersPage } from "./pages/CustomersPage";
@@ -43,14 +44,18 @@ export function AppShell() {
 
   if (!hydrated) return <div className="loading-screen"><div className="brand-mark">K</div><p>Kassenbuch Pro wird geladen …</p></div>;
 
-  return (
+  return <CidGateway>{(cidSession, logoutCid) => (
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="brand"><div className="brand-mark">K</div><div><strong>Kassenbuch Pro</strong><span>Handel & Buchhaltung</span></div></div>
         <nav>
           {mainNav.map((item) => <button key={item.key} className={page === item.key ? "active" : ""} onClick={() => navigate(item.key)}><Icon name={item.icon} width={20} height={20} /><span>{pageLabel(language, item.key)}</span></button>)}
         </nav>
-        <div className="sidebar-bottom"><button className={page === "settings" ? "active" : ""} onClick={() => navigate("settings")}><Icon name="settings" width={20} height={20} /><span>{pageLabel(language, "settings")}</span></button><div className="business-chip"><div>{state.settings.businessName.slice(0, 1).toUpperCase()}</div><span><strong>{state.settings.businessName}</strong><small>Lokale Prototyp-Version</small></span></div></div>
+        <div className="sidebar-bottom">
+          <button className={page === "settings" ? "active" : ""} onClick={() => navigate("settings")}><Icon name="settings" width={20} height={20} /><span>{pageLabel(language, "settings")}</span></button>
+          <div className="cid-session-chip"><span>Cidentia CID</span><strong>{cidSession.cid}</strong><button onClick={logoutCid}>CID wechseln</button></div>
+          <div className="business-chip"><div>{state.settings.businessName.slice(0, 1).toUpperCase()}</div><span><strong>{state.settings.businessName}</strong><small>Cidentia lokale Version</small></span></div>
+        </div>
       </aside>
       {mobileOpen ? <button className="sidebar-overlay" aria-label="Menü schließen" onClick={() => setMobileOpen(false)} /> : null}
       <main className="main-area">
@@ -58,7 +63,7 @@ export function AppShell() {
         <div className="content">{renderPage(page, navigate)}</div>
       </main>
     </div>
-  );
+  )}</CidGateway>;
 }
 
 function renderPage(page: PageKey, navigate: (page: PageKey) => void) {
