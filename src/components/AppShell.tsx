@@ -72,7 +72,7 @@ function renderPage(page: PageKey, navigate: (page: PageKey) => void) {
     case "devices": return <DevicesPage />;
     case "documents": return <DocumentsPage />;
     case "ledger": return <LedgerImportPage />;
-    case "accounts": return <AccountsPage />;
+    case "accounts": return <AccountsPage onNavigate={navigate} />;
     case "settings": return <SettingsPage />;
   }
 }
