@@ -61,6 +61,10 @@
   margin-bottom: 13px;
 }
 
+.cid-code-field {
+  margin-top: 14px;
+}
+
 .cid-field span {
   font-size: 12px;
   color: #44515b;
@@ -74,6 +78,11 @@
   padding: 0 14px;
   font-size: 15px;
   outline: none;
+}
+
+.cid-field input:read-only {
+  background: #f4f7f8;
+  color: #59666f;
 }
 
 .cid-field input:focus {
@@ -92,6 +101,7 @@
   text-align: center;
   font-weight: 800;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .cid-primary {
@@ -103,6 +113,12 @@
 
 .cid-primary:hover { background: #0a5b55; }
 
+.cid-primary:disabled,
+.cid-secondary:disabled {
+  cursor: not-allowed;
+  opacity: .62;
+}
+
 .cid-secondary {
   margin-top: 10px;
   border: 1px solid #cbd4da;
@@ -113,15 +129,26 @@
 
 .cid-secondary:hover { background: #f8fafb; }
 
-.cid-error {
-  background: #fdecec;
-  color: #c53b3b;
-  border: 1px solid #f4c7c7;
+.cid-error,
+.cid-success {
   border-radius: 12px;
   padding: 11px 12px;
   margin: 14px 0;
   font-size: 13px;
   font-weight: 700;
+  line-height: 1.45;
+}
+
+.cid-error {
+  background: #fdecec;
+  color: #c53b3b;
+  border: 1px solid #f4c7c7;
+}
+
+.cid-success {
+  background: #e7f6ef;
+  color: #176b4a;
+  border: 1px solid #bce5d2;
 }
 
 .cid-note {

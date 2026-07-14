@@ -1,5 +1,9 @@
 import type { CidentiaSession } from "./cidentia-session";
-import { isValidCid, normalizeCid } from "./cidentia-session";
+import {
+  CIDENTIA_SESSION_TTL_SECONDS,
+  isValidCid,
+  normalizeCid,
+} from "./cidentia-session";
 
 const DEFAULT_CIDENTIA_API_BASE = "https://api.cidendb.com/api/v1/sdk";
 
@@ -115,12 +119,13 @@ async function readJson(response: Response): Promise<Record<string, unknown> | u
 function buildSessionFromPayload(cidValue: string, payload: Record<string, unknown> | undefined, method: CidentiaSession["method"]): CidentiaSession {
   const cid = normalizeCid(cidValue);
   if (!isValidCid(cid)) throw new Error("Cidentia Antwort enthält keine gültige CID.");
-  const now = new Date().toISOString();
+  const now = new Date();
   return {
     cid,
-    connectedAt: now,
+    connectedAt: now.toISOString(),
     verified: true,
-    verifiedAt: now,
+    verifiedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + CIDENTIA_SESSION_TTL_SECONDS * 1000).toISOString(),
     method,
     user: {
       fullName: textValue(payload, ["full_name", "fullName", "name"]),
