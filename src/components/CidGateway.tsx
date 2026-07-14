@@ -3,73 +3,122 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   CID_SESSION_KEY,
-  isValidCid,
   isVerifiedCidentiaSession,
-  normalizeCid,
   type CidentiaSession,
 } from "@/lib/cidentia-session";
 
 const CIDENTIA_CREATE_URL = "https://cidentiaapp.com";
 
+type LoginStep = "email" | "code";
+
+type ApiPayload = {
+  error?: string;
+  message?: string;
+  session?: CidentiaSession;
+};
+
 export function CidGateway({ children }: { children: (session: CidentiaSession, logout: () => void) => ReactNode }) {
   const [initialized, setInitialized] = useState(false);
   const [session, setSession] = useState<CidentiaSession>();
-  const [cidInput, setCidInput] = useState("");
+  const [step, setStep] = useState<LoginStep>("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    let cancelled = false;
+
+    try {
+      window.localStorage.removeItem(CID_SESSION_KEY);
+    } catch {
+      // Browser storage may be unavailable; the HttpOnly cookie session still works.
+    }
+
+    async function restoreSession() {
       try {
-        const stored = window.localStorage.getItem(CID_SESSION_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored) as unknown;
-          if (isVerifiedCidentiaSession(parsed)) {
-            setSession(parsed);
-          } else {
-            window.localStorage.removeItem(CID_SESSION_KEY);
-          }
+        const response = await fetch("/api/cidentia/session", {
+          method: "GET",
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = (await response.json()) as ApiPayload;
+        if (!cancelled && payload.session && isVerifiedCidentiaSession(payload.session)) {
+          setSession(payload.session);
         }
       } catch {
-        window.localStorage.removeItem(CID_SESSION_KEY);
+        // A missing session is a normal logged-out state.
       } finally {
-        setInitialized(true);
+        if (!cancelled) setInitialized(true);
       }
-    }, 0);
-    return () => window.clearTimeout(timer);
+    }
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  async function login() {
-    const cid = normalizeCid(cidInput);
-    if (!isValidCid(cid)) {
-      setError("Bitte eine gültige CID / Cidentia ID eingeben.");
-      return;
-    }
+  async function sendCode() {
     setLoading(true);
     setError("");
+    setMessage("");
     try {
-      const response = await fetch("/api/cidentia/verify", {
+      const response = await fetch("/api/cidentia/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cid }),
+        body: JSON.stringify({ email }),
       });
-      const payload = (await response.json()) as { session?: CidentiaSession; error?: string };
-      if (!response.ok || !payload.session || !isVerifiedCidentiaSession(payload.session)) {
-        throw new Error(payload.error || "CidenDB hat diese CID nicht bestätigt.");
-      }
-      window.localStorage.setItem(CID_SESSION_KEY, JSON.stringify(payload.session));
-      setSession(payload.session);
+      const payload = (await response.json()) as ApiPayload;
+      if (!response.ok) throw new Error(payload.error || "Bestätigungscode konnte nicht gesendet werden.");
+      setStep("code");
+      setCode("");
+      setMessage(payload.message || "Cidentia hat einen Bestätigungscode gesendet.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "CID konnte nicht über CidenDB geprüft werden.");
+      setError(cause instanceof Error ? cause.message : "Bestätigungscode konnte nicht gesendet werden.");
     } finally {
       setLoading(false);
     }
   }
 
+  async function verifyCode() {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/cidentia/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code }),
+      });
+      const payload = (await response.json()) as ApiPayload;
+      if (!response.ok || !payload.session || !isVerifiedCidentiaSession(payload.session)) {
+        throw new Error(payload.error || "Cidentia Anmeldung ist fehlgeschlagen.");
+      }
+      setSession(payload.session);
+      setMessage("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Cidentia Anmeldung ist fehlgeschlagen.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function useAnotherEmail() {
+    setStep("email");
+    setCode("");
+    setError("");
+    setMessage("");
+  }
+
   function logout() {
-    window.localStorage.removeItem(CID_SESSION_KEY);
-    setSession(undefined);
-    setCidInput("");
+    void fetch("/api/cidentia/session", { method: "DELETE" }).finally(() => {
+      setSession(undefined);
+      setStep("email");
+      setCode("");
+      setError("");
+      setMessage("");
+    });
   }
 
   if (!initialized) {
@@ -84,27 +133,59 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
           <p className="cid-kicker">Cidentia Zugang</p>
           <h1>Kassenbuch Pro öffnen</h1>
           <p className="cid-text">
-            Dieses Kassenbuch öffnet nur mit bestätigter CID. Die CID wird zuerst über CidenDB geprüft.
+            Melden Sie sich mit Ihrer Cidentia E-Mail-Adresse an. Cidentia sendet einen einmaligen Bestätigungscode.
           </p>
+
           {error ? <div className="cid-error">{error}</div> : null}
+          {message ? <div className="cid-success">{message}</div> : null}
+
           <label className="cid-field">
-            <span>CID / Cidentia ID</span>
+            <span>E-Mail-Adresse</span>
             <input
-              autoFocus
-              value={cidInput}
-              onChange={(event) => setCidInput(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") void login(); }}
-              placeholder="z.B. CID-..."
-              autoComplete="username"
+              autoFocus={step === "email"}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter" && step === "email") void sendCode(); }}
+              placeholder="name@beispiel.de"
+              type="email"
+              autoComplete="email"
+              readOnly={step === "code"}
             />
           </label>
-          <button className="cid-primary" disabled={loading} onClick={() => void login()}>
-            {loading ? "CID wird über CidenDB geprüft …" : "CID prüfen und öffnen"}
-          </button>
-          <a className="cid-secondary" href="/api/cidentia/authorize">Mit Cidentia anmelden</a>
-          <a className="cid-secondary" href={CIDENTIA_CREATE_URL} target="_blank" rel="noreferrer">Noch keine CID? Auf cidentiaapp.com erstellen</a>
+
+          {step === "email" ? (
+            <button className="cid-primary" type="button" disabled={loading} onClick={() => void sendCode()}>
+              {loading ? "Code wird gesendet …" : "Bestätigungscode senden"}
+            </button>
+          ) : (
+            <>
+              <label className="cid-field cid-code-field">
+                <span>Bestätigungscode</span>
+                <input
+                  autoFocus
+                  value={code}
+                  onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(event) => { if (event.key === "Enter") void verifyCode(); }}
+                  placeholder="6-stelliger Code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={10}
+                />
+              </label>
+              <button className="cid-primary" type="button" disabled={loading} onClick={() => void verifyCode()}>
+                {loading ? "Anmeldung wird geprüft …" : "Mit Cidentia anmelden"}
+              </button>
+              <button className="cid-secondary" type="button" disabled={loading} onClick={useAnotherEmail}>
+                Andere E-Mail-Adresse verwenden
+              </button>
+            </>
+          )}
+
+          <a className="cid-secondary" href={CIDENTIA_CREATE_URL} target="_blank" rel="noreferrer">
+            Noch keine CID? Auf cidentiaapp.com erstellen
+          </a>
           <div className="cid-note">
-            Direkter Zugang ohne CidenDB-Prüfung ist deaktiviert. Für Quick Verify muss der Server CIDENTIA_API_KEY haben; für OAuth braucht er Client ID und Client Secret.
+            Die Anmeldung wird direkt von Cidentia bestätigt. Manuelle CID-Eingabe, API-Key und OAuth Client Secret sind für diesen Zugang nicht erforderlich.
           </div>
         </section>
       </main>
