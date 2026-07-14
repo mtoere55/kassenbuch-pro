@@ -20,11 +20,29 @@ Der Callback ist domain-neutral im Code angelegt und läuft unter:
 /cid/callback
 ```
 
-Beispieltest nach dem Deployment:
+Direkter CID-Parameter ohne OAuth-Code reicht nicht mehr aus. Richtig ist:
 
 ```text
-https://kassenbuch.handyreparatur.shop/cid/callback?cid=CID-TEST-001
+https://kassenbuch.handyreparatur.shop/cid/callback?code=...&state=...
 ```
+
+## CidenDB Server-Umgebung
+
+Der Browser darf keinen API Key oder Client Secret sehen. Deshalb müssen diese Werte im Systemd-Service auf dem Server gesetzt werden:
+
+```bash
+Environment=CIDENTIA_API_BASE=https://api.cidendb.com/api/v1/sdk
+Environment=CIDENTIA_REDIRECT_URI=https://kassenbuch.handyreparatur.shop/cid/callback
+Environment=CIDENTIA_API_KEY=PASTE_CIDENDB_API_KEY_HERE
+Environment=CIDENTIA_CLIENT_ID=PASTE_CIDENDB_CLIENT_ID_HERE
+Environment=CIDENTIA_CLIENT_SECRET=PASTE_CIDENDB_CLIENT_SECRET_HERE
+```
+
+Funktion:
+
+- `CIDENTIA_API_KEY`: Quick Verify für manuell eingegebene CID über `/sdk/verify`.
+- `CIDENTIA_CLIENT_ID` und `CIDENTIA_CLIENT_SECRET`: OAuth Flow über `/sdk/oauth/authorize` und `/sdk/oauth/token`.
+- Ohne diese Werte öffnet die App nicht mehr direkt, sondern zeigt einen Konfigurationsfehler.
 
 ## DNS
 
@@ -44,16 +62,17 @@ Falls Cloudflare verwendet wird, vor dem ersten Certbot-Test optional kurz DNS-o
 
 ## Nginx
 
+Auf diesem VPS sind `3010` und `3020` bereits von anderen `/var/www/c...` Prozessen belegt. Kassenbuch läuft deshalb intern auf `3099`:
+
 ```bash
-cat >/etc/nginx/sites-available/kassenbuch-handyreparatur-shop <<'EOF'
+cat >/etc/nginx/sites-available/kassenbuch-handyreparatur <<'EOF'
 server {
-    listen 80;
     server_name kassenbuch.handyreparatur.shop;
 
     client_max_body_size 50M;
 
     location / {
-        proxy_pass http://127.0.0.1:3010;
+        proxy_pass http://127.0.0.1:3099;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -62,10 +81,26 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/kassenbuch.handyreparatur.shop/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/kassenbuch.handyreparatur.shop/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    if ($host = kassenbuch.handyreparatur.shop) {
+        return 301 https://$host$request_uri;
+    }
+
+    listen 80;
+    server_name kassenbuch.handyreparatur.shop;
+    return 404;
 }
 EOF
 
-ln -sf /etc/nginx/sites-available/kassenbuch-handyreparatur-shop /etc/nginx/sites-enabled/kassenbuch-handyreparatur-shop
+ln -sf /etc/nginx/sites-available/kassenbuch-handyreparatur /etc/nginx/sites-enabled/kassenbuch-handyreparatur
 nginx -t
 systemctl reload nginx
 ```
@@ -78,7 +113,7 @@ certbot --nginx -d kassenbuch.handyreparatur.shop
 
 ## Systemd Service
 
-Die App läuft intern auf Port `3010`:
+Die App läuft intern auf Port `3099`:
 
 ```bash
 cat >/etc/systemd/system/kassenbuch-pro.service <<'EOF'
@@ -90,8 +125,12 @@ After=network.target
 Type=simple
 WorkingDirectory=/opt/kassenbuch-pro/app
 Environment=NODE_ENV=production
-Environment=PORT=3010
-ExecStart=/usr/bin/npm run start
+Environment=CIDENTIA_API_BASE=https://api.cidendb.com/api/v1/sdk
+Environment=CIDENTIA_REDIRECT_URI=https://kassenbuch.handyreparatur.shop/cid/callback
+Environment=CIDENTIA_API_KEY=PASTE_CIDENDB_API_KEY_HERE
+Environment=CIDENTIA_CLIENT_ID=PASTE_CIDENDB_CLIENT_ID_HERE
+Environment=CIDENTIA_CLIENT_SECRET=PASTE_CIDENDB_CLIENT_SECRET_HERE
+ExecStart=/opt/kassenbuch-pro/app/node_modules/.bin/next start -p 3099 -H 127.0.0.1
 Restart=always
 RestartSec=5
 
@@ -132,4 +171,11 @@ https://kassenbuch.handyreparatur.shop
 https://kassenbuch.handyreparatur.shop/cid/callback?cid=CID-TEST-001
 ```
 
-Wenn der Callback die CID übernimmt und zurück zur Haupt-App führt, ist die CID-Rückgabe technisch korrekt angebunden.
+Der zweite Test muss jetzt absichtlich fehlschlagen, weil `cid=` alleine keine echte CidenDB-Prüfung ist.
+
+Echte Tests:
+
+```text
+https://kassenbuch.handyreparatur.shop → Mit Cidentia anmelden
+Manuelle CID → nur mit gültigem CIDENTIA_API_KEY und erfolgreichem /sdk/verify
+```
