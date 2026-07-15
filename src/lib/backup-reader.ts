@@ -199,7 +199,7 @@ function createLedgerEntry(
   const accountCode = configuredRule?.accountCode || (category ? String(category.code) : "0000");
   const accountLabel = getBookingCategory(accountCode)?.label || category?.name || "Nicht zugeordnet";
   const differential = ["3290", "8336", "8390"].includes(accountCode);
-  const resolvedTaxRate = configuredRule?.taxRate ?? transaction.taxRate || category?.taxRate || 0;
+  const resolvedTaxRate = configuredRule?.taxRate ?? (transaction.taxRate || category?.taxRate || 0);
   const taxRate = differential ? 0 : resolvedTaxRate;
   const taxAmount = taxRate ? getTaxAmountFromGross(amount, taxRate) : 0;
   const taxMode: TaxMode = differential ? "differential" : taxRate ? "standard19" : "taxFree";
