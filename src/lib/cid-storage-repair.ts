@@ -44,7 +44,11 @@ export async function repairLeakedCidState(
       scopedKey,
       JSON.stringify(createEmptyBrowserState()),
     );
-    await quarantineScopedAttachments(scope, stamp);
+    try {
+      await quarantineScopedAttachments(scope, stamp);
+    } catch (error) {
+      console.error("CID-bezogene Dokumentdateien konnten nicht quarantänisiert werden", error);
+    }
   }
 
   window.localStorage.setItem(markerKey, "1");
