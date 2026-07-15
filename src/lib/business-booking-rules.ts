@@ -60,7 +60,7 @@ export function resolveConfiguredBankRule(text: string, amount: number): Configu
   if (includesAny(value, ["kontoführung", "kontofuehrung", "abrechnung", "bankentgelt"]) && amount < 0) {
     return rule("bank-fee", "Bankgebühren", "4970", "expense", "expense", "bankFee", false, false, 0, "1200", "Bankentgelte werden ohne Vorsteuer gebucht.");
   }
-  if (amount < 0 && value.includes("gülbahar sun")) {
+  if (amount < 0 && value.includes("gulbahar sun")) {
     return rule("family-payment", "Familienzahlung / privat", "1800", "transfer", "private", "privateWithdrawal", true, false, 0, "1200", "Zahlung an Gülbahar Sun wird als private Familienzahlung behandelt.");
   }
   if (amount < 0 && value.includes("murat toere") && value.includes("gehalt")) {
