@@ -52,32 +52,82 @@ export function LedgerEntryEditModal({ entry, onClose, onSaved }: Props) {
         documentNumber, cashChange: calculateCashChange(entry, draft.direction, draft.paymentMethod, amount),
         netAmount: roundMoney(amount - updatedTaxAmount), note: draft.note.trim() || undefined,
       };
+      const paymentMatchChanged = hasPaymentMatchChanged(entry, nextEntry, relatedDocument?.documentNumber);
+      const affectedPaymentCount = paymentMatchChanged
+        ? state.importedTransactions.filter((transaction) => transaction.matchedLedgerEntryId === entry.id || Boolean(entry.documentId && transaction.matchedDocumentId === entry.documentId)).length
+        : 0;
       replaceState({
         ...state,
         ledger: state.ledger.map((item) => item.id === entry.id ? nextEntry : item),
         documents: state.documents.map((document) => document.id !== entry.documentId ? document : { ...document, date: draft.date, amount, taxAmount: updatedTaxAmount, taxMode: nextTaxMode, paymentMethod: draft.paymentMethod, documentNumber: documentNumber || document.documentNumber }),
+        importedTransactions: paymentMatchChanged
+          ? state.importedTransactions.map((transaction) => {
+              const affected = transaction.matchedLedgerEntryId === entry.id || Boolean(entry.documentId && transaction.matchedDocumentId === entry.documentId);
+              if (!affected) return transaction;
+              return {
+                ...transaction,
+                matchedDocumentId: undefined,
+                matchConfidence: 0,
+                status: "needsReview" as const,
+                bookkeepingStatus: transaction.matchedLedgerEntryId ? "booked" as const : transaction.bookkeepingStatus,
+              };
+            })
+          : state.importedTransactions,
       });
-      onSaved("Buchung wurde aktualisiert.");
+      onSaved(affectedPaymentCount
+        ? `Buchung wurde aktualisiert. ${affectedPaymentCount} Zahlungszuordnung(en) wurden wegen der Änderung wieder auf Prüfung gesetzt.`
+        : "Buchung wurde aktualisiert.");
       onClose();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Buchung konnte nicht gespeichert werden."); }
   }
 
   function deleteEntry() {
     if (!entry) return;
-    const ok = window.confirm("Diese Buchung wirklich löschen? Der gespeicherte Beleg/PDF bleibt im Archiv erhalten.");
+    if (entry.documentId) {
+      setError("Diese Buchung gehört zu einem Geschäftsdokument und kann hier nicht gelöscht werden. Bitte den ursprünglichen Verkauf, Ankauf, Reparaturauftrag oder Beleg korrigieren.");
+      return;
+    }
+    const affectedPaymentCount = state.importedTransactions.filter((transaction) => transaction.matchedLedgerEntryId === entry.id || transaction.feeLedgerEntryId === entry.id).length;
+    const ok = window.confirm(
+      `Diese eigenständige Buchung wirklich löschen?${affectedPaymentCount ? `\n\n${affectedPaymentCount} verknüpfte Zahlungszuordnung(en) werden wieder auf Prüfung gesetzt.` : ""}`,
+    );
     if (!ok) return;
-    replaceState({ ...state, ledger: state.ledger.filter((item) => item.id !== entry.id) });
-    onSaved("Buchung wurde gelöscht.");
+    replaceState({
+      ...state,
+      ledger: state.ledger.filter((item) => item.id !== entry.id),
+      importedTransactions: state.importedTransactions.map((transaction) => {
+        const primaryMatchRemoved = transaction.matchedLedgerEntryId === entry.id;
+        const feeMatchRemoved = transaction.feeLedgerEntryId === entry.id;
+        if (!primaryMatchRemoved && !feeMatchRemoved) return transaction;
+        return {
+          ...transaction,
+          matchedDocumentId: primaryMatchRemoved ? undefined : transaction.matchedDocumentId,
+          matchedLedgerEntryId: primaryMatchRemoved ? undefined : transaction.matchedLedgerEntryId,
+          feeLedgerEntryId: feeMatchRemoved ? undefined : transaction.feeLedgerEntryId,
+          matchConfidence: primaryMatchRemoved ? 0 : transaction.matchConfidence,
+          status: primaryMatchRemoved ? "needsReview" as const : transaction.status,
+          bookkeepingStatus: primaryMatchRemoved
+            ? undefined
+            : feeMatchRemoved && transaction.bookkeepingStatus === "reviewed"
+              ? "booked" as const
+              : transaction.bookkeepingStatus,
+        };
+      }),
+    });
+    onSaved(affectedPaymentCount
+      ? `Buchung wurde gelöscht. ${affectedPaymentCount} Zahlungszuordnung(en) wurden wieder auf Prüfung gesetzt.`
+      : "Buchung wurde gelöscht.");
     onClose();
   }
 
   function printCard() { printHtmlElement(printRef.current, "Buchung"); }
   const netAmount = roundMoney(amount - taxAmount);
 
-  return <Modal open={Boolean(entry)} title="Buchung bearbeiten" onClose={onClose} wide footer={<Fragment><Button variant="danger" onClick={deleteEntry}>Buchung löschen</Button><Button variant="secondary" icon="print" onClick={printCard}>Drucken</Button><Button variant="secondary" onClick={onClose}>Schließen</Button><Button onClick={save}>Änderung speichern</Button></Fragment>}>
+  return <Modal open={Boolean(entry)} title="Buchung bearbeiten" onClose={onClose} wide footer={<Fragment>{entry.documentId ? null : <Button variant="danger" onClick={deleteEntry}>Buchung löschen</Button>}<Button variant="secondary" icon="print" onClick={printCard}>Drucken</Button><Button variant="secondary" onClick={onClose}>Schließen</Button><Button onClick={save}>Änderung speichern</Button></Fragment>}>
     <div className="screen-only">
       <div className="entry-card-head"><div><small>Buchen / Bearbeiten</small><strong>{formatDate(entry.date)}</strong></div><div><small>Konto</small><strong>{cashAccountTitle(entry)}</strong></div><div><small>Kassenwirkung</small><strong className={cashChange < 0 ? "money-negative" : "money-positive"}>{cashChange >= 0 ? "+" : "−"}{formatCurrency(Math.abs(cashChange))}</strong></div></div>
       {error ? <div className="alert alert-danger">{error}</div> : null}
+      {entry.documentId ? <div className="alert alert-warning">Diese Buchung ist mit einem Geschäftsdokument verbunden. Sie kann hier bearbeitet, aber nicht isoliert gelöscht werden.</div> : null}
       {entry.source !== "manual" ? <div className="alert alert-info">Diese Buchung kommt aus einem Import ({entry.source}). Änderungen sind möglich, aber der ursprüngliche Importbeleg bleibt zur Kontrolle erhalten.</div> : null}
       {isDifferentialSale ? <div className="alert alert-info">§25a: Die Umsatzsteuer wird nur aus der Differenz berechnet. Einkauf {formatCurrency(relatedDevice?.purchasePrice || 0)}, Verkauf {formatCurrency(amount)}, Marge {formatCurrency(Math.max(0, amount - (relatedDevice?.purchasePrice || 0)))}.</div> : null}
       <div className="form-grid two"><Field label="Datum"><Input type="date" value={draft.date} onChange={(event) => patch("date", event.target.value)} /></Field><Field label="Art"><Select value={draft.direction} onChange={(event) => patch("direction", event.target.value as LedgerDirection)}><option value="income">Einnahme</option><option value="expense">Ausgabe</option><option value="transfer">Umbuchung / Fremdgeld</option></Select></Field><Field label="Buchungskonto" hint={isTransfer ? "Gegenkonto zur Kasse, z.B. 1590 UniTel Guthaben" : undefined}><Select value={draft.bookingAccountCode} onChange={(event) => patch("bookingAccountCode", event.target.value)}>{accountOptions.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.label}</option>)}</Select></Field><Field label="Zahlungsart"><Select value={draft.paymentMethod} onChange={(event) => patch("paymentMethod", event.target.value as PaymentMethod)}><option value="cash">Bar / Kasse</option><option value="card">Karte</option><option value="bank">Bank</option><option value="paypal">PayPal</option></Select></Field><Field label="Betrag (Brutto)"><Input inputMode="decimal" value={draft.amount} onChange={(event) => patch("amount", event.target.value)} /></Field><Field label="MwSt." hint={isDifferentialSale ? "§25a: Steuer nur aus der Marge" : undefined}><Select value={draft.taxRate} onChange={(event) => patch("taxRate", Number(event.target.value))}><option value={19}>19 %</option><option value={7}>7 %</option><option value={0}>0 %</option></Select></Field><Field label="Beleg / Buchung Nr."><Input value={draft.documentNumber} onChange={(event) => patch("documentNumber", event.target.value)} /></Field><Field label="Text"><Input value={draft.description} onChange={(event) => patch("description", event.target.value)} /></Field></div>
@@ -95,5 +145,6 @@ function cashAccountTitle(entry: LedgerEntry): string { if (entry.paymentMethod 
 function cashAccountForPayment(payment: PaymentMethod): string { if (payment === "card") return "1360"; if (payment === "bank") return "1200"; if (payment === "paypal") return "1370"; return "1000"; }
 function calculateCashChange(entry: LedgerEntry, direction: LedgerDirection, payment: PaymentMethod, amount: number): number { if (direction === "income") return payment === "cash" ? amount : 0; if (direction === "expense") return payment === "cash" ? -amount : 0; if (payment !== "cash") return 0; const current = entryCashEffect(entry); return current < 0 ? -amount : amount; }
 function calculateEntryTax(amount: number, rate: number, isDifferentialSale: boolean, purchasePrice?: number): number { if (isDifferentialSale) return calculateDifferentialTax(amount, purchasePrice || 0, rate || 19); return includedTax(amount, rate); }
+function hasPaymentMatchChanged(previous: LedgerEntry, next: LedgerEntry, relatedDocumentNumber?: string): boolean { return previous.date !== next.date || previous.direction !== next.direction || previous.amount !== next.amount || previous.paymentMethod !== next.paymentMethod || (previous.documentNumber || relatedDocumentNumber || "") !== (next.documentNumber || ""); }
 function moneyInput(value: number): string { return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value); }
 function roundMoney(value: number): number { return Math.round((value + Number.EPSILON) * 100) / 100; }
