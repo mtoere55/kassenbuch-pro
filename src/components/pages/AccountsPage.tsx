@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/accounting";
 import { bankTransactionKindLabel, isBankInternalTransaction } from "@/lib/bank-statement";
-import { applyConfiguredBusinessRules } from "@/lib/business-booking-rules";
 import { isMalformedLegacyPdfImport } from "@/lib/import-repair";
+import { applyBookkeepingRulesSafely } from "@/lib/learned-booking-rules";
 import { isInternalTransfer, preparePayPalBookkeeping } from "@/lib/paypal-bookkeeping";
 import { useKassenStore } from "@/lib/store";
 import { reconcileImportedState } from "@/lib/transaction-reconciliation";
@@ -22,15 +22,15 @@ export function AccountsPage({ onNavigate }: { onNavigate: (page: PageKey) => vo
   const malformedLegacyImports = state.importedTransactions.filter(isMalformedLegacyPdfImport);
 
   useEffect(() => {
-    const normalized = applyConfiguredBusinessRules(state);
+    const normalized = applyBookkeepingRulesSafely(state);
     if (normalized !== state) replaceState(normalized);
   }, [replaceState, state]);
 
   function reconcile() {
     const result = reconcileImportedState(state);
-    replaceState(applyConfiguredBusinessRules(result.state));
+    replaceState(applyBookkeepingRulesSafely(result.state));
     setError("");
-    setMessage(result.matched ? `${result.matched} Umsatz/Umsätze wurden mit vorhandenen Dokumenten verbunden. Die betrieblichen Regeln wurden erneut angewendet.` : "Alle bekannten Regeln wurden angewendet. Nur fehlende Belege oder wirklich unbekannte Vorgänge bleiben offen.");
+    setMessage(result.matched ? `${result.matched} Umsatz/Umsätze wurden mit vorhandenen Dokumenten verbunden. Die betrieblichen Regeln wurden erneut angewendet.` : "Alle bekannten und gelernten Regeln wurden angewendet. Nur fehlende Belege oder wirklich unbekannte Vorgänge bleiben offen.");
   }
 
   function removeMalformedLegacyImports() {
@@ -55,7 +55,7 @@ export function AccountsPage({ onNavigate }: { onNavigate: (page: PageKey) => vo
       return;
     }
     const result = preparePayPalBookkeeping(state);
-    replaceState(applyConfiguredBusinessRules(result.state));
+    replaceState(applyBookkeepingRulesSafely(result.state));
     setError("");
     setMessage(
       `${result.createdEntries} Buchung(en) wurden erstellt, ${result.linkedEntries} vorhandene Belegbuchung(en) verbunden und ` +
@@ -78,7 +78,7 @@ export function AccountsPage({ onNavigate }: { onNavigate: (page: PageKey) => vo
   const sortedTransactions = useMemo(() => [...state.importedTransactions].sort((left, right) => `${right.date}|${right.time || ""}`.localeCompare(`${left.date}|${left.time || ""}`)), [state.importedTransactions]);
 
   return <div>
-    <PageHeader title="Bank & Zahlungsabgleich" subtitle="Bekannte Geschäftsvorgänge werden automatisch kontiert. Offen bleiben nur fehlende Belege oder Vorgänge ohne hinterlegte Regel." actions={<div className="document-actions"><Button onClick={() => onNavigate("scan")}>Datenimport öffnen</Button><Button variant="secondary" onClick={reconcile}>Regeln erneut anwenden</Button><Button variant="secondary" onClick={prepareBookkeeping}>PayPal buchen</Button></div>} />
+    <PageHeader title="Bank & Zahlungsabgleich" subtitle="Bekannte Geschäftsvorgänge werden automatisch kontiert. Neue Zuordnungen können als Regel gespeichert werden." actions={<div className="document-actions"><Button onClick={() => onNavigate("scan")}>Datenimport öffnen</Button><Button variant="secondary" onClick={reconcile}>Regeln erneut anwenden</Button><Button variant="secondary" onClick={prepareBookkeeping}>PayPal buchen</Button></div>} />
     {message ? <div className="alert alert-success">{message}</div> : null}
     {error ? <div className="alert alert-danger">{error}</div> : null}
     {malformedLegacyImports.length ? <div className="alert alert-danger"><strong>Fehlerhafter früherer PDF-Import erkannt.</strong> {malformedLegacyImports.length} ungebuchte Zeile(n) enthalten die IBAN als Betrag und das Importdatum als Buchungsdatum. <Button variant="danger" onClick={removeMalformedLegacyImports}>Fehlerhafte Altimporte entfernen</Button></div> : null}
@@ -94,18 +94,20 @@ export function AccountsPage({ onNavigate }: { onNavigate: (page: PageKey) => vo
 }
 
 function TransactionRow({ item, document, ledgerEntry, onReview }: { item: ImportedTransaction; document?: BusinessDocument; ledgerEntry?: LedgerEntry; onReview: () => void }) {
+  const privateMovement = ledgerEntry?.manualKind === "private";
   const providerInternal = item.accountType === "paypal" && isInternalTransfer(item);
   const bankInternal = isBankInternalTransaction(item);
-  const internal = providerInternal || bankInternal;
-  const unresolved = !internal && (!ledgerEntry?.accountCode || ledgerEntry.accountCode === "0000");
-  const missingDocument = !internal && !unresolved && item.bookkeepingStatus === "booked";
-  const canReview = Boolean(item.matchedLedgerEntryId) && !internal && item.bookkeepingStatus !== "reviewed";
-  const bookkeepingLabel = internal ? "Umbuchung" : unresolved ? "Regel erforderlich" : missingDocument ? "Gebucht · Beleg fehlt" : item.bookkeepingStatus === "reviewed" ? "Automatisch gebucht" : "Noch nicht gebucht";
+  const internal = (providerInternal || bankInternal) && !privateMovement;
+  const unresolved = !privateMovement && !internal && (!ledgerEntry?.accountCode || ledgerEntry.accountCode === "0000");
+  const missingDocument = !privateMovement && !internal && !unresolved && item.bookkeepingStatus === "booked";
+  const canReview = Boolean(item.matchedLedgerEntryId) && !privateMovement && !internal && item.bookkeepingStatus !== "reviewed";
+  const bookkeepingLabel = privateMovement ? "Privat gebucht" : internal ? "Umbuchung" : unresolved ? "Regel erforderlich" : missingDocument ? "Gebucht · Beleg fehlt" : item.bookkeepingStatus === "reviewed" ? "Automatisch gebucht" : "Noch nicht gebucht";
   const buttonLabel = unresolved ? "Regel festlegen" : "Beleg / Konto";
   const displayReference = document?.documentNumber || item.invoiceNumber || ledgerEntry?.documentNumber || "–";
-  return <tr><td>{formatDate(item.date)}<small>{item.time || ""}</small></td><td><Badge tone={item.accountType === "paypal" ? "info" : "neutral"}>{item.accountType === "paypal" ? "Dienstleister" : "Bank"}</Badge></td><td><Badge tone={internal ? "info" : item.transactionType === "refund" ? "warning" : "neutral"}>{item.accountType === "bank" ? bankTransactionKindLabel(item) : transactionTypeLabel(item.transactionType)}</Badge></td><td><strong>{item.counterparty || item.description}</strong><small>{ledgerEntry?.category || (item.counterparty ? item.description.split(" · ")[0] : item.externalId || "Keine externe Referenz")}</small></td><td><strong>{displayReference}</strong><small>{document ? `${documentTypeLabel(document)} · ${item.matchConfidence}%` : ledgerEntry?.documentNumber || item.relatedExternalId || item.externalId || ""}</small></td><td><Badge tone={internal || item.status === "matched" ? "success" : unresolved || missingDocument ? "warning" : "neutral"}>{statusLabel(internal, unresolved, missingDocument)}</Badge></td><td><div className="document-actions"><Badge tone={internal || item.bookkeepingStatus === "reviewed" ? "success" : unresolved || missingDocument ? "warning" : "neutral"}>{bookkeepingLabel}</Badge>{canReview ? <Button variant="secondary" onClick={onReview}>{buttonLabel}</Button> : null}</div></td><td>{item.feeAmount ? formatCurrency(item.feeAmount) : "–"}</td><td className={`align-right ${item.amount >= 0 ? "money-positive" : "money-negative"}`}><strong>{item.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(item.amount))}</strong><small>{item.currency || "EUR"}</small></td></tr>;
+  const kindLabel = privateMovement ? "Privat" : item.accountType === "bank" ? bankTransactionKindLabel(item) : transactionTypeLabel(item.transactionType);
+  return <tr><td>{formatDate(item.date)}<small>{item.time || ""}</small></td><td><Badge tone={item.accountType === "paypal" ? "info" : "neutral"}>{item.accountType === "paypal" ? "Dienstleister" : "Bank"}</Badge></td><td><Badge tone={privateMovement || internal ? "info" : item.transactionType === "refund" ? "warning" : "neutral"}>{kindLabel}</Badge></td><td><strong>{item.counterparty || item.description}</strong><small>{ledgerEntry?.category || (item.counterparty ? item.description.split(" · ")[0] : item.externalId || "Keine externe Referenz")}</small></td><td><strong>{displayReference}</strong><small>{document ? `${documentTypeLabel(document)} · ${item.matchConfidence}%` : ledgerEntry?.documentNumber || item.relatedExternalId || item.externalId || ""}</small></td><td><Badge tone={privateMovement || internal || item.status === "matched" ? "success" : unresolved || missingDocument ? "warning" : "neutral"}>{statusLabel(privateMovement, internal, unresolved, missingDocument)}</Badge></td><td><div className="document-actions"><Badge tone={privateMovement || internal || item.bookkeepingStatus === "reviewed" ? "success" : unresolved || missingDocument ? "warning" : "neutral"}>{bookkeepingLabel}</Badge>{canReview ? <Button variant="secondary" onClick={onReview}>{buttonLabel}</Button> : null}</div></td><td>{item.feeAmount ? formatCurrency(item.feeAmount) : "–"}</td><td className={`align-right ${item.amount >= 0 ? "money-positive" : "money-negative"}`}><strong>{item.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(item.amount))}</strong><small>{item.currency || "EUR"}</small></td></tr>;
 }
 
 function transactionTypeLabel(type?: ImportedTransactionType) { return ({ payment: "Zahlung", refund: "Rückzahlung", bankFunding: "Bank → Dienstleister", bankWithdrawal: "Dienstleister → Bank", fee: "Gebühr", other: "Umsatz" } as const)[type || "other"]; }
-function statusLabel(internal: boolean, unresolved: boolean, missingDocument: boolean) { if (internal) return "Umbuchung"; if (unresolved) return "Regel erforderlich"; if (missingDocument) return "Beleg fehlt"; return "Abgeglichen"; }
+function statusLabel(privateMovement: boolean, internal: boolean, unresolved: boolean, missingDocument: boolean) { if (privateMovement) return "Automatisch gebucht"; if (internal) return "Umbuchung"; if (unresolved) return "Regel erforderlich"; if (missingDocument) return "Beleg fehlt"; return "Abgeglichen"; }
 function documentTypeLabel(document: BusinessDocument) { return document.type === "invoice" ? "Rechnung" : document.type === "receipt" ? "Quittung" : document.type === "estimate" ? "Kostenvoranschlag" : document.type === "purchaseContract" ? "Ankaufvertrag" : document.type === "zReport" ? "Tagesabschluss" : "Eingangsrechnung"; }
