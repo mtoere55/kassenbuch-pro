@@ -55,18 +55,31 @@ function transactionBlock(input: {
   return bytes;
 }
 
+function makeBackup(blocks: Uint8Array[]) {
+  const header = new Uint8Array(BLOCK_SIZE);
+  new DataView(header.buffer).setUint32(0, 1, true);
+  const allBlocks = [header, ...blocks];
+  const output = new Uint8Array(allBlocks.length * BLOCK_SIZE);
+  allBlocks.forEach((block, index) => output.set(block, index * BLOCK_SIZE));
+  return output.buffer;
+}
+
 function fixture() {
-  const blocks = [
-    new Uint8Array(BLOCK_SIZE),
+  return makeBackup([
     categoryBlock(1, "Einnahmen", 8400, 1, 19),
     categoryBlock(2, "Burobedarf", 4930, 2, 19),
     transactionBlock({ id: 10, text: "Verkauf", day: 1, month: 7, year: 2025, category: 8400, sequence: 1, cents: 11900, taxRate: 19 }),
     transactionBlock({ id: 11, text: "Papier", day: 2, month: 7, year: 2025, category: 4930, sequence: 2, cents: -5950, taxRate: 19 }),
-  ];
-  new DataView(blocks[0].buffer).setUint32(0, 1, true);
-  const output = new Uint8Array(blocks.length * BLOCK_SIZE);
-  blocks.forEach((block, index) => output.set(block, index * BLOCK_SIZE));
-  return output.buffer;
+  ]);
+}
+
+function clearingFixture() {
+  return makeBackup([
+    transactionBlock({ id: 20, text: "Ria Money Transfer", day: 1, month: 4, year: 2026, category: 1591, sequence: 20, cents: 100000 }),
+    transactionBlock({ id: 21, text: "Ria Auszahlung", day: 2, month: 4, year: 2026, category: 15911, sequence: 21, cents: -90000 }),
+    transactionBlock({ id: 22, text: "Prifoto", day: 3, month: 4, year: 2026, category: 8401, sequence: 22, cents: 5000, taxRate: 19 }),
+    transactionBlock({ id: 23, text: "@telcom Ersatzteil", day: 4, month: 4, year: 2026, category: 0, sequence: 23, cents: -11900, taxRate: 19 }),
+  ]);
 }
 
 describe("cashbook backup reader", () => {
@@ -86,11 +99,23 @@ describe("cashbook backup reader", () => {
     const firstPlan = planBackupImport(backup, [], "meinbuch.kas");
     expect(firstPlan.entries).toHaveLength(2);
     expect(firstPlan.entries[0].cashChange).toBe(119);
+    expect(firstPlan.entries[0].documentNumber).toBe("KASSE-202507-0001");
     expect(firstPlan.entries[1].cashChange).toBe(-59.5);
     expect(firstPlan.entries[1].taxAmount).toBe(9.5);
+    expect(firstPlan.entries[1].documentNumber).toBe("KASSE-202507-0002");
 
     const secondPlan = planBackupImport(backup, firstPlan.entries, "meinbuch.kas");
     expect(secondPlan.entries).toHaveLength(0);
     expect(secondPlan.duplicateCount).toBe(2);
+  });
+
+  it("automatically maps Ria, Prifoto and known spare-parts rows", () => {
+    const backup = parseCashbookBackup(clearingFixture());
+    const plan = planBackupImport(backup, [], "meinbuch.kas");
+    expect(plan.unknownCategoryCount).toBe(0);
+    expect(plan.entries.map((entry) => entry.accountCode)).toEqual(["1591", "1591", "1592", "3400"]);
+    expect(plan.entries.slice(0, 3).every((entry) => entry.direction === "transfer")).toBe(true);
+    expect(plan.entries[2]).toMatchObject({ taxRate: 0, taxAmount: 0, documentNumber: "KASSE-202604-0003" });
+    expect(plan.entries[3]).toMatchObject({ direction: "expense", taxRate: 19, documentNumber: "KASSE-202604-0004" });
   });
 });
