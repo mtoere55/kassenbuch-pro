@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/accounting";
 import { bankTransactionKindLabel, isBankInternalTransaction } from "@/lib/bank-statement";
+import { isMalformedLegacyPdfImport } from "@/lib/import-repair";
 import { isInternalTransfer, preparePayPalBookkeeping } from "@/lib/paypal-bookkeeping";
 import { useKassenStore } from "@/lib/store";
 import { reconcileImportedState } from "@/lib/transaction-reconciliation";
@@ -17,12 +18,28 @@ export function AccountsPage({ onNavigate }: { onNavigate: (page: PageKey) => vo
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string>();
   const selectedTransaction = state.importedTransactions.find((item) => item.id === selectedId);
+  const malformedLegacyImports = state.importedTransactions.filter(isMalformedLegacyPdfImport);
 
   function reconcile() {
     const result = reconcileImportedState(state);
     replaceState(result.state);
     setError("");
     setMessage(result.matched ? `${result.matched} Umsätze wurden sicher mit Dokumenten und Buchungen abgeglichen.` : "Keine weiteren eindeutigen Treffer gefunden. Offene Umsätze bleiben zur Prüfung markiert.");
+  }
+
+  function removeMalformedLegacyImports() {
+    const count = malformedLegacyImports.length;
+    if (!count) return;
+    const confirmed = window.confirm(
+      `${count} fehlerhafte Altimport-Zeile(n) entfernen?\n\nEs werden nur ungebuchte Zeilen entfernt, bei denen eine IBAN fälschlich als extrem hoher Betrag und das Importdatum als Buchungsdatum gespeichert wurde.`,
+    );
+    if (!confirmed) return;
+    replaceState({
+      ...state,
+      importedTransactions: state.importedTransactions.filter((item) => !isMalformedLegacyPdfImport(item)),
+    });
+    setError("");
+    setMessage(`${count} fehlerhafte Altimport-Zeile(n) wurden entfernt. Der Kontoauszug kann danach über Datenimport erneut eingelesen werden.`);
   }
 
   function prepareBookkeeping() {
@@ -58,6 +75,7 @@ export function AccountsPage({ onNavigate }: { onNavigate: (page: PageKey) => vo
     <PageHeader title="Bank & Zahlungsabgleich" subtitle="Kontoauszüge, Zahlungsdienstleister-CSV und Monatsberichte werden ausschließlich über Datenimport hochgeladen und hier geprüft." actions={<div className="document-actions"><Button onClick={() => onNavigate("scan")}>Datenimport öffnen</Button><Button variant="secondary" onClick={reconcile}>Automatisch abgleichen</Button><Button variant="secondary" onClick={prepareBookkeeping}>Zahlungsdienstleister buchen</Button></div>} />
     {message ? <div className="alert alert-success">{message}</div> : null}
     {error ? <div className="alert alert-danger">{error}</div> : null}
+    {malformedLegacyImports.length ? <div className="alert alert-danger"><strong>Fehlerhafter früherer PDF-Import erkannt.</strong> {malformedLegacyImports.length} ungebuchte Zeile(n) enthalten die IBAN als Betrag und das Importdatum als Buchungsdatum. <Button variant="danger" onClick={removeMalformedLegacyImports}>Fehlerhafte Altimporte entfernen</Button></div> : null}
     <div className="stat-grid"><StatCard label="Bankbewegungen" value={String(bankCount)} detail={`${bankBooked} gebucht · ${bankReview} prüfen`} /><StatCard label="Zahlungsdienstleister" value={String(providerCount)} tone="blue" detail={`${providerInternal} interne Umbuchungen`} /><StatCard label="Gebucht" value={String(providerBooked)} tone="positive" detail={`${providerReviewed} geprüft`} /><StatCard label="Gebühren" value={formatCurrency(providerFees)} tone="negative" detail={`${providerMatched} zugeordnet`} /></div>
     <Card>
       <div className="card-heading"><div><h2>Kontobewegungen</h2><p>Auszahlungen, Bargeldeinzahlungen und Zahlungsdienstleister-Bankbewegungen werden als Umbuchungen behandelt, nicht als doppelte Einnahmen oder Ausgaben.</p></div></div>
