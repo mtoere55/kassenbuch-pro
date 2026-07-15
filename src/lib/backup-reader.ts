@@ -1,4 +1,6 @@
 import { getTaxAmountFromGross, makeId } from "./accounting";
+import { getBookingCategory } from "./accounts";
+import { createPeriodBookingNumberAllocator, resolveConfiguredKasRule, type ConfiguredKasRule } from "./business-booking-rules";
 import type { LedgerEntry, LedgerDirection, TaxMode } from "./types";
 
 const BLOCK_SIZE = 256;
@@ -109,6 +111,7 @@ export function planBackupImport(
 ): BackupImportPlan {
   const existingSourceIds = new Set(existingEntries.map((entry) => entry.sourceId).filter(Boolean));
   const categoryMap = new Map(backup.categories.map((category) => [category.code, category]));
+  const allocateNumber = createPeriodBookingNumberAllocator("KASSE", existingEntries);
   const entries: LedgerEntry[] = [];
   let duplicateCount = 0;
   let unknownCategoryCount = 0;
@@ -121,8 +124,14 @@ export function planBackupImport(
     }
 
     const category = categoryMap.get(transaction.categoryCode);
-    if (!category) unknownCategoryCount += 1;
-    entries.push(createLedgerEntry(transaction, category, sourceId, fileName));
+    const configuredRule = resolveConfiguredKasRule({
+      categoryCode: transaction.categoryCode,
+      description: transaction.description,
+      signedAmount: transaction.signedAmount,
+      taxRate: transaction.taxRate,
+    });
+    if (!category && !configuredRule) unknownCategoryCount += 1;
+    entries.push(createLedgerEntry(transaction, category, configuredRule, sourceId, fileName, allocateNumber(transaction.date)));
   }
 
   return { entries, duplicateCount, unknownCategoryCount };
@@ -178,25 +187,31 @@ function parseTransaction(bytes: Uint8Array, view: DataView, offset: number): Ba
 function createLedgerEntry(
   transaction: BackupTransaction,
   category: BackupCategory | undefined,
+  configuredRule: ConfiguredKasRule | undefined,
   sourceId: string,
   fileName: string,
+  documentNumber: string,
 ): LedgerEntry {
   const amount = Math.abs(transaction.signedAmount);
-  const classification = classifyTransaction(transaction, category);
-  const differential = transaction.categoryCode === 3290 || transaction.categoryCode === 8390;
-  const taxRate = differential ? 0 : transaction.taxRate || category?.taxRate || 0;
+  const fallbackClassification = classifyTransaction(transaction, category);
+  const direction = configuredRule?.direction || fallbackClassification.direction;
+  const manualKind = configuredRule?.manualKind || fallbackClassification.manualKind;
+  const accountCode = configuredRule?.accountCode || (category ? String(category.code) : "0000");
+  const accountLabel = getBookingCategory(accountCode)?.label || category?.name || "Nicht zugeordnet";
+  const differential = ["3290", "8336", "8390"].includes(accountCode);
+  const resolvedTaxRate = configuredRule?.taxRate ?? (transaction.taxRate || category?.taxRate || 0);
+  const taxRate = differential ? 0 : resolvedTaxRate;
   const taxAmount = taxRate ? getTaxAmountFromGross(amount, taxRate) : 0;
   const taxMode: TaxMode = differential ? "differential" : taxRate ? "standard19" : "taxFree";
-  const accountLabel = category?.name || "Nicht zugeordnet";
-  const accountCode = category ? String(category.code) : "0000";
-  const documentNumber = transaction.sequence
-    ? `KAS-${transaction.sequence}`
-    : `KAS-${transaction.recordId}`;
+  const notes = [
+    `KAS-Import aus ${fileName}; Original-ID ${transaction.recordId}; Original-Konto ${transaction.categoryCode || "0"}`,
+    configuredRule?.explanation,
+  ].filter(Boolean).join(" · ");
 
   return {
     id: makeId("ledger"),
     date: transaction.date,
-    direction: classification.direction,
+    direction,
     amount,
     paymentMethod: "cash",
     description: transaction.description || accountLabel,
@@ -206,14 +221,14 @@ function createLedgerEntry(
     taxAmount,
     taxRate,
     taxMode,
-    reconciled: true,
+    reconciled: accountCode !== "0000",
     accountCode,
-    counterAccountCode: String(transaction.accountCode || 1000),
+    counterAccountCode: "1000",
     documentNumber,
     cashChange: transaction.signedAmount,
     netAmount: roundMoney(amount - taxAmount),
-    note: `KAS-Import aus ${fileName}; Original-ID ${transaction.recordId}`,
-    manualKind: classification.manualKind,
+    note: notes,
+    manualKind,
     createdAt: `${transaction.date}T12:00:00.000Z`,
   };
 }
@@ -225,7 +240,7 @@ function classifyTransaction(
   if (transaction.categoryCode === 1800 || transaction.categoryCode === 1890) {
     return { direction: "transfer", manualKind: "private" };
   }
-  if (transaction.categoryCode === 1200 || transaction.categoryCode === 1360) {
+  if (transaction.categoryCode === 1200 || transaction.categoryCode === 1360 || transaction.categoryCode === 1590) {
     return { direction: "transfer", manualKind: "transfer" };
   }
   if (transaction.signedAmount < 0 || (transaction.signedAmount === 0 && category?.kind === 2)) {
