@@ -6,6 +6,7 @@ import {
   normalizeRuleText,
   validPeriodBookingNumber,
 } from "./business-booking-rules";
+import { normalizeSaleAccountingState } from "./sale-accounting-normalizer";
 import type {
   AppState,
   ImportedTransaction,
@@ -84,6 +85,8 @@ export function upsertLearnedBookingRule(state: AppState, rule: LearnedBookingRu
 }
 
 export function applyBookkeepingRulesSafely(current: AppState): AppState {
+  const original = current;
+  current = normalizeSaleAccountingState(current);
   const rules = getLearnedBookingRules(current)
     .slice()
     .sort((left, right) => right.keyword.length - left.keyword.length);
@@ -141,7 +144,7 @@ export function applyBookkeepingRulesSafely(current: AppState): AppState {
   } as AppState;
 
   if (!changed && builtInResult === builtInInput) return current;
-  return sameState(current, nextState) ? current : nextState;
+  return sameState(original, nextState) ? original : nextState;
 }
 
 function findLearnedRule(
