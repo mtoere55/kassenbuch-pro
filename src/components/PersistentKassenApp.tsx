@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { AppShell } from "./AppShell";
+import { CidGateway } from "./CidGateway";
 import {
   installLocalStorageAttachmentBridge,
   loadAttachmentRecords,
@@ -15,10 +16,14 @@ if (typeof window !== "undefined") {
 
 export function PersistentKassenApp() {
   return (
-    <KassenProvider>
-      <AttachmentHydrator />
-      <AppShell />
-    </KassenProvider>
+    <CidGateway>
+      {(cidSession, logoutCid) => (
+        <KassenProvider key={cidSession.cid}>
+          <AttachmentHydrator />
+          <AppShell cidSession={cidSession} logoutCid={logoutCid} />
+        </KassenProvider>
+      )}
+    </CidGateway>
   );
 }
 
