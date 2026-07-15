@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { activateCidStorageScope } from "@/lib/browser-persistence";
+import { ensureCidScopedBootstrap } from "@/lib/cid-scoped-bootstrap";
 import { repairLeakedCidState } from "@/lib/cid-storage-repair";
 import type { CidentiaStoragePolicy } from "@/lib/cidentia-storage-policy";
 import {
@@ -37,7 +38,8 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
     try {
       window.localStorage.removeItem(CID_SESSION_KEY);
     } catch {
-      // Browser storage may be unavailable; the HttpOnly cookie session still works.
+      // The server cookie remains authoritative. Storage availability is
+      // verified before the bookkeeping provider is allowed to mount.
     }
 
     async function restoreSession() {
@@ -57,10 +59,18 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
             payload.session.cid,
             payload.storagePolicy?.legacyOwnerCid,
           );
+          ensureCidScopedBootstrap(payload.session.cid);
           if (!cancelled) setSession(payload.session);
         }
       } catch (cause) {
         console.error("Cidentia Sitzung konnte nicht wiederhergestellt werden", cause);
+        if (!cancelled) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Der lokale CID-Datenspeicher konnte nicht geöffnet werden.",
+          );
+        }
       } finally {
         if (!cancelled) setInitialized(true);
       }
@@ -115,6 +125,7 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
         payload.session.cid,
         payload.storagePolicy?.legacyOwnerCid,
       );
+      ensureCidScopedBootstrap(payload.session.cid);
       setSession(payload.session);
       setMessage("");
     } catch (cause) {
