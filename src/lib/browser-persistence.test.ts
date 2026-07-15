@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  cidStateStorageKey,
+  createEmptyBrowserState,
   mergeStateWithBrowserAttachments,
+  normalizeCidStorageScope,
   splitStateForBrowserStorage,
 } from "./browser-persistence";
 import type { AppState } from "./types";
@@ -31,6 +34,24 @@ describe("browser persistence", () => {
     expect(split.attachments.map((item) => item.key)).toContain("ledger:ledger-1:data");
     const restored = mergeStateWithBrowserAttachments(split.compactState, split.attachments);
     expect(restored.ledger[0].attachmentDataUrl).toBe("data:image/jpeg;base64,BBBB");
+  });
+
+  it("builds stable CID-specific state keys", () => {
+    expect(normalizeCidStorageScope(" cid-26-00004 ")).toBe("CID-26-00004");
+    expect(cidStateStorageKey("cid-26-00004")).toBe("kassenbuch-pro-state-v1:CID-26-00004");
+    expect(() => normalizeCidStorageScope("??")).toThrow("Ungültige CID");
+  });
+
+  it("starts a new CID with an empty bookkeeping dataset", () => {
+    const state = createEmptyBrowserState();
+    expect(state.customers).toEqual([]);
+    expect(state.devices).toEqual([]);
+    expect(state.purchases).toEqual([]);
+    expect(state.sales).toEqual([]);
+    expect(state.documents).toEqual([]);
+    expect(state.ledger).toEqual([]);
+    expect(state.settings.businessName).toBe("Mein Betrieb");
+    expect(state.settings.openingCash).toBe(0);
   });
 });
 

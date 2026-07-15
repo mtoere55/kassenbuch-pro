@@ -2,6 +2,10 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  activateCidStorageScope,
+  clearCidStorageScope,
+} from "@/lib/browser-persistence";
+import {
   CID_SESSION_KEY,
   isVerifiedCidentiaSession,
   type CidentiaSession,
@@ -45,6 +49,11 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
         if (!response.ok) return;
         const payload = (await response.json()) as ApiPayload;
         if (!cancelled && payload.session && isVerifiedCidentiaSession(payload.session)) {
+          const activation = activateCidStorageScope(payload.session.cid);
+          if (activation.changed) {
+            window.location.replace("/");
+            return;
+          }
           setSession(payload.session);
         }
       } catch {
@@ -95,11 +104,10 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
       if (!response.ok || !payload.session || !isVerifiedCidentiaSession(payload.session)) {
         throw new Error(payload.error || "Cidentia Anmeldung ist fehlgeschlagen.");
       }
-      setSession(payload.session);
-      setMessage("");
+      activateCidStorageScope(payload.session.cid);
+      window.location.replace("/");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Cidentia Anmeldung ist fehlgeschlagen.");
-    } finally {
       setLoading(false);
     }
   }
@@ -112,12 +120,10 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
   }
 
   function logout() {
+    setLoading(true);
     void fetch("/api/cidentia/session", { method: "DELETE" }).finally(() => {
-      setSession(undefined);
-      setStep("email");
-      setCode("");
-      setError("");
-      setMessage("");
+      clearCidStorageScope();
+      window.location.replace("/");
     });
   }
 
