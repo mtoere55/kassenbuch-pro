@@ -22,9 +22,19 @@ describe("malformed legacy PDF import repair", () => {
     expect(isMalformedLegacyPdfImport(transaction())).toBe(true);
   });
 
+  it("detects the live malformed shape with label in counterparty and an external text field", () => {
+    expect(isMalformedLegacyPdfImport(transaction({
+      description: "00 07.04.2026 Überweisung o.Beleg Prifoto GmbH ReNr RE-010320263003",
+      counterparty: "Importierter Umsatz",
+      externalId: "00 07.04.2026 Überweisung o.Beleg Prifoto GmbH ReNr RE-010320263003",
+      bookkeepingStatus: "unbooked",
+    }))).toBe(true);
+  });
+
   it("does not remove normal or already booked transactions", () => {
     expect(isMalformedLegacyPdfImport(transaction({ amount: 281.95 }))).toBe(false);
     expect(isMalformedLegacyPdfImport(transaction({ matchedLedgerEntryId: "ledger-1" }))).toBe(false);
+    expect(isMalformedLegacyPdfImport(transaction({ bookkeepingStatus: "booked" }))).toBe(false);
     expect(isMalformedLegacyPdfImport(transaction({ accountType: "bank" }))).toBe(false);
   });
 });
