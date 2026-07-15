@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { pageLabel } from "@/lib/i18n";
+import type { CidentiaSession } from "@/lib/cidentia-session";
 import { useKassenStore } from "@/lib/store";
 import type { PageKey } from "@/lib/types";
-import { CidGateway } from "./CidGateway";
 import { Icon, type IconName } from "./Icon";
 import { AccountsPage } from "./pages/AccountsPage";
 import { CustomersPage } from "./pages/CustomersPage";
@@ -31,7 +31,13 @@ const mainNav: Array<{ key: PageKey; icon: IconName }> = [
   { key: "accounts", icon: "accounts" },
 ];
 
-export function AppShell() {
+export function AppShell({
+  cidSession,
+  logoutCid,
+}: {
+  cidSession: CidentiaSession;
+  logoutCid: () => void;
+}) {
   const { state, hydrated } = useKassenStore();
   const [page, setPage] = useState<PageKey>("dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -44,7 +50,7 @@ export function AppShell() {
 
   if (!hydrated) return <div className="loading-screen"><div className="brand-mark">K</div><p>Kassenbuch Pro wird geladen …</p></div>;
 
-  return <CidGateway>{(cidSession, logoutCid) => (
+  return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="brand"><div className="brand-mark">K</div><div><strong>Kassenbuch Pro</strong><span>Handel & Buchhaltung</span></div></div>
@@ -63,7 +69,7 @@ export function AppShell() {
         <div className="content">{renderPage(page, navigate)}</div>
       </main>
     </div>
-  )}</CidGateway>;
+  );
 }
 
 function renderPage(page: PageKey, navigate: (page: PageKey) => void) {
