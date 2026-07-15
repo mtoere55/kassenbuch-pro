@@ -3,13 +3,28 @@ import type { AppState, BusinessDocument, ImportedTransaction } from "./types";
 export function reconcileImportedState(current: AppState): { state: AppState; matched: number } {
   let matched = 0;
   const matchedLedgerIds = new Set<string>();
+  const reservedDocumentIds = new Set(
+    current.importedTransactions
+      .filter((transaction) => transaction.status === "matched" && transaction.matchedDocumentId)
+      .map((transaction) => transaction.matchedDocumentId as string),
+  );
+  const reservedLedgerIds = new Set(
+    current.importedTransactions
+      .filter((transaction) => transaction.status === "matched" && transaction.matchedLedgerEntryId)
+      .map((transaction) => transaction.matchedLedgerEntryId as string),
+  );
+
   const importedTransactions = current.importedTransactions.map((transaction) => {
     if (transaction.status === "matched" || transaction.status === "ignored") return transaction;
     if (transaction.transactionType === "refund") {
       return { ...transaction, status: "needsReview" as const, matchConfidence: 0 };
     }
     const candidates = current.documents
-      .filter((document) => documentFitsTransaction(document, transaction))
+      .filter((document) => {
+        if (reservedDocumentIds.has(document.id) || !documentFitsTransaction(document, transaction)) return false;
+        const ledgerEntry = current.ledger.find((entry) => entry.documentId === document.id);
+        return !ledgerEntry || !reservedLedgerIds.has(ledgerEntry.id);
+      })
       .map((document) => ({ document, score: scoreDocument(document, transaction) }))
       .sort((left, right) => right.score - left.score);
     const best = candidates[0];
@@ -19,7 +34,11 @@ export function reconcileImportedState(current: AppState): { state: AppState; ma
       return { ...transaction, matchConfidence: best?.score ?? 0, status: "needsReview" as const };
     }
     const ledgerEntry = current.ledger.find((entry) => entry.documentId === best.document.id);
-    if (ledgerEntry) matchedLedgerIds.add(ledgerEntry.id);
+    reservedDocumentIds.add(best.document.id);
+    if (ledgerEntry) {
+      reservedLedgerIds.add(ledgerEntry.id);
+      matchedLedgerIds.add(ledgerEntry.id);
+    }
     matched += 1;
     return {
       ...transaction,
