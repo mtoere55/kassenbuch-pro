@@ -4,6 +4,7 @@ import {
   expiredCidentiaSessionCookieOptions,
   readCidentiaSessionCookie,
 } from "@/lib/cidentia-cookie-session";
+import { cidentiaStoragePolicy } from "@/lib/cidentia-storage-policy";
 import { assertSameOrigin } from "@/lib/request-origin";
 
 export const runtime = "nodejs";
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { session },
+    { session, storagePolicy: cidentiaStoragePolicy() },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
