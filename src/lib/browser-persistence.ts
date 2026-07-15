@@ -3,12 +3,14 @@ import type { AppState } from "./types";
 export const APP_STORAGE_KEY = "kassenbuch-pro-state-v1";
 export const ACTIVE_CID_STORAGE_KEY = "kassenbuch-pro-active-cid-v1";
 export const DATA_OWNER_CID_KEY = "kassenbuch-pro-data-owner-cid-v1";
+export const CONFIGURED_LEGACY_OWNER_CID_KEY = "kassenbuch-pro-configured-legacy-owner-cid-v1";
 
 const DB_NAME = "kassenbuch-pro-local-files";
 const DB_VERSION = 1;
 const STORE_NAME = "attachments";
 const BRIDGE_FLAG = "__kassenbuchStorageBridgeInstalled";
 const CID_ATTACHMENT_PREFIX = "cid:";
+const QUARANTINE_PREFIX = "kassenbuch-pro-quarantine-v1";
 
 let originalStorageGetItem: typeof Storage.prototype.getItem | undefined;
 let originalStorageSetItem: typeof Storage.prototype.setItem | undefined;
@@ -26,6 +28,7 @@ export interface SplitStateResult {
 export interface CidStorageActivation {
   changed: boolean;
   migratedLegacyState: boolean;
+  repairedMisassignedState: boolean;
   scope: string;
 }
 
@@ -78,29 +81,78 @@ export function createEmptyBrowserState(): AppState {
   };
 }
 
-export function activateCidStorageScope(cid: string): CidStorageActivation {
+export function activateCidStorageScope(
+  cid: string,
+  legacyOwnerCid?: string,
+): CidStorageActivation {
   const scope = normalizeCidStorageScope(cid);
   if (typeof window === "undefined") {
-    return { changed: false, migratedLegacyState: false, scope };
+    return {
+      changed: false,
+      migratedLegacyState: false,
+      repairedMisassignedState: false,
+      scope,
+    };
   }
 
+  const configuredOwner = legacyOwnerCid
+    ? normalizeCidStorageScope(legacyOwnerCid)
+    : undefined;
   const previousScope = rawGetItem(window.localStorage, ACTIVE_CID_STORAGE_KEY);
   const scopedKey = cidStateStorageKey(scope);
   const existingScopedState = rawGetItem(window.localStorage, scopedKey);
   const legacyState = rawGetItem(window.localStorage, APP_STORAGE_KEY);
   const dataOwner = rawGetItem(window.localStorage, DATA_OWNER_CID_KEY);
   let migratedLegacyState = false;
+  let repairedMisassignedState = false;
 
-  if (!existingScopedState && legacyState && (!dataOwner || dataOwner === scope)) {
+  if (configuredOwner) {
+    rawSetItem(
+      window.localStorage,
+      CONFIGURED_LEGACY_OWNER_CID_KEY,
+      configuredOwner,
+    );
+
+    if (scope === configuredOwner) {
+      if (
+        legacyState &&
+        (!existingScopedState || isEmptyStoredState(existingScopedState))
+      ) {
+        rawSetItem(window.localStorage, scopedKey, legacyState);
+        migratedLegacyState = true;
+      }
+      rawSetItem(window.localStorage, DATA_OWNER_CID_KEY, configuredOwner);
+    } else {
+      const looksMisassigned = Boolean(
+        existingScopedState &&
+          (dataOwner === scope || existingScopedState === legacyState),
+      );
+      if (looksMisassigned && existingScopedState) {
+        const quarantineKey = `${QUARANTINE_PREFIX}:${scope}:${Date.now()}`;
+        rawSetItem(window.localStorage, quarantineKey, existingScopedState);
+        rawSetItem(
+          window.localStorage,
+          scopedKey,
+          JSON.stringify(createEmptyBrowserState()),
+        );
+        repairedMisassignedState = true;
+      }
+      rawSetItem(window.localStorage, DATA_OWNER_CID_KEY, configuredOwner);
+    }
+  } else if (
+    !existingScopedState &&
+    legacyState &&
+    dataOwner === scope
+  ) {
     rawSetItem(window.localStorage, scopedKey, legacyState);
-    if (!dataOwner) rawSetItem(window.localStorage, DATA_OWNER_CID_KEY, scope);
     migratedLegacyState = true;
   }
 
   rawSetItem(window.localStorage, ACTIVE_CID_STORAGE_KEY, scope);
   return {
-    changed: previousScope !== scope,
+    changed: previousScope !== scope || repairedMisassignedState,
     migratedLegacyState,
+    repairedMisassignedState,
     scope,
   };
 }
@@ -207,9 +259,8 @@ export function installLocalStorageAttachmentBridge(): void {
 
         const legacyState = rawGetItem(this, APP_STORAGE_KEY);
         const dataOwner = rawGetItem(this, DATA_OWNER_CID_KEY);
-        if (legacyState && (!dataOwner || dataOwner === scope)) {
+        if (legacyState && dataOwner === scope) {
           rawSetItem(this, scopedKey, legacyState);
-          if (!dataOwner) rawSetItem(this, DATA_OWNER_CID_KEY, scope);
           return legacyState;
         }
 
@@ -338,6 +389,23 @@ function ledgerDataKey(ledgerId: string): string {
 
 function isLegacyAttachmentKey(key: string): boolean {
   return key.startsWith("document:") || key.startsWith("ledger:");
+}
+
+function isEmptyStoredState(value: string): boolean {
+  try {
+    const state = JSON.parse(value) as Partial<AppState>;
+    return (
+      Array.isArray(state.customers) && state.customers.length === 0 &&
+      Array.isArray(state.devices) && state.devices.length === 0 &&
+      Array.isArray(state.purchases) && state.purchases.length === 0 &&
+      Array.isArray(state.sales) && state.sales.length === 0 &&
+      Array.isArray(state.documents) && state.documents.length === 0 &&
+      Array.isArray(state.ledger) && state.ledger.length === 0 &&
+      Array.isArray(state.importedTransactions) && state.importedTransactions.length === 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isQuotaError(error: unknown): boolean {

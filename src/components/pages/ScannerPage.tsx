@@ -1,20 +1,27 @@
 "use client";
 
+import { useState } from "react";
 import { formatCurrency } from "@/lib/accounting";
 import { Icon } from "../Icon";
 import { Badge, Button, Card, Field, PageHeader, Select } from "../ui";
+import { KasBackupImportModal } from "./KasEntryReviewModal";
 import { InvoiceFields, ZReportFields } from "./scanner/ReceiptForms";
 import { type ScanDocumentType, useScannerController } from "./scanner/useScannerController";
 
 export function ScannerPage() {
   const scan = useScannerController();
+  const [kasOpen, setKasOpen] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+
   return <div>
-    <PageHeader title="Universal Beleg Import" subtitle="Ein gemeinsamer Import für PDF, Foto, CSV, TXT, Kontoauszug, Tagesabschluss, Lieferantenrechnung und Zahlungsberichte. Spezialformate werden im Hintergrund erkannt; die Oberfläche bleibt für alle Nutzer gleich." />
+    <PageHeader title="Datenimport" subtitle="Zentrale Importstelle für PDF, Foto, CSV, TXT, Kontoauszug, Tagesabschluss, Eingangsrechnung, Zahlungsberichte und KAS-Datensicherungen." />
     {scan.error ? <div className="alert alert-danger">{scan.error}</div> : null}
     {scan.message ? <div className="alert alert-success">{scan.message}</div> : null}
+    {importMessage ? <div className="alert alert-success">{importMessage}</div> : null}
     {scan.scanInfo ? <div className="alert alert-success">{scan.scanInfo}</div> : null}
     <div className="scanner-grid">
       <Card>
+        <div className="card-heading"><div><h2>Universal Beleg Import</h2><p>Eine Upload-Stelle für laufende Geschäftsunterlagen und Zahlungsdateien.</p></div></div>
         <label className="dropzone">
           <input type="file" accept="application/pdf,.pdf,image/*,.csv,.txt,.tsv,text/*,*/*" onChange={(event) => scan.chooseFile(event.target.files?.[0])} />
           <span className="dropzone-icon"><Icon name="scan" width={32} height={32} /></span>
@@ -24,7 +31,7 @@ export function ScannerPage() {
         {scan.preview ? <div className="scan-preview">{scan.isPdf ? <object data={scan.preview} type="application/pdf" className="pdf-preview"><a href={scan.preview}>PDF öffnen</a></object> : <PreviewImage src={scan.preview} />}</div> : null}
         <Button className="full-button" disabled={!scan.file || scan.isProcessing} onClick={() => void scan.scan()}>{scan.isProcessing ? `Dokument wird gelesen ${scan.progress}%` : "Universal Import auslesen"}</Button>
         {scan.isProcessing ? <div className="progress"><span style={{ width: `${scan.progress}%` }} /></div> : null}
-        <div className="alert alert-info">Alle Spezialimporte laufen künftig hier zusammen. Wenn das Dokument nicht sicher erkannt wird, bleibt es als Eingangsrechnung/Beleg manuell prüfbar.</div>
+        <div className="alert alert-info">Kontoauszüge, Zahlungsdienstleister-Dateien, Belege und Tagesabschlüsse werden ausschließlich hier hochgeladen. Die Auswertung erfolgt anschließend im passenden Programmbereich.</div>
       </Card>
       <Card>
         <div className="card-heading"><div><h2>Erkannte Daten</h2><p>Dokumenttyp, Konto und Werte können vor dem Buchen korrigiert werden.</p></div>{scan.transactionSummary ? <Badge tone="info">Kontobewegungen</Badge> : scan.parsed ? <Badge tone="success">{scan.parsed.type === "zReport" ? "Tagesabschluss" : "Eingangsrechnung"}</Badge> : null}</div>
@@ -36,7 +43,11 @@ export function ScannerPage() {
         {(scan.parsed || scan.transactionSummary) ? <Button className="full-button" onClick={() => void scan.save()}>Geprüfte Daten übernehmen</Button> : null}
       </Card>
     </div>
+    <Card>
+      <div className="card-heading"><div><h2>KAS-Datensicherung</h2><p>KAS-Backups werden ebenfalls nur über diese zentrale Importseite eingelesen. Vor dem Speichern werden Zeitraum, Konten, Summen und Dubletten geprüft.</p></div><Button variant="secondary" icon="upload" onClick={() => setKasOpen(true)}>KAS-Backup einlesen</Button></div>
+    </Card>
     {scan.ocrText ? <Card><details><summary>Ausgelesener Rohtext anzeigen</summary><pre className="ocr-text">{scan.ocrText}</pre></details></Card> : null}
+    <KasBackupImportModal open={kasOpen} onClose={() => setKasOpen(false)} onImported={(message) => { setImportMessage(message); setKasOpen(false); }} />
   </div>;
 }
 

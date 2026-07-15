@@ -5,6 +5,7 @@ import {
   activateCidStorageScope,
   clearCidStorageScope,
 } from "@/lib/browser-persistence";
+import type { CidentiaStoragePolicy } from "@/lib/cidentia-storage-policy";
 import {
   CID_SESSION_KEY,
   isVerifiedCidentiaSession,
@@ -19,6 +20,7 @@ type ApiPayload = {
   error?: string;
   message?: string;
   session?: CidentiaSession;
+  storagePolicy?: CidentiaStoragePolicy;
 };
 
 export function CidGateway({ children }: { children: (session: CidentiaSession, logout: () => void) => ReactNode }) {
@@ -49,7 +51,10 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
         if (!response.ok) return;
         const payload = (await response.json()) as ApiPayload;
         if (!cancelled && payload.session && isVerifiedCidentiaSession(payload.session)) {
-          const activation = activateCidStorageScope(payload.session.cid);
+          const activation = activateCidStorageScope(
+            payload.session.cid,
+            payload.storagePolicy?.legacyOwnerCid,
+          );
           if (activation.changed) {
             window.location.replace("/");
             return;
@@ -104,7 +109,10 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
       if (!response.ok || !payload.session || !isVerifiedCidentiaSession(payload.session)) {
         throw new Error(payload.error || "Cidentia Anmeldung ist fehlgeschlagen.");
       }
-      activateCidStorageScope(payload.session.cid);
+      activateCidStorageScope(
+        payload.session.cid,
+        payload.storagePolicy?.legacyOwnerCid,
+      );
       window.location.replace("/");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Cidentia Anmeldung ist fehlgeschlagen.");

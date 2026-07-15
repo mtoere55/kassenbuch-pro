@@ -28,7 +28,7 @@ export function AccountsPage({ onNavigate }: { onNavigate: (page: PageKey) => vo
   function prepareBookkeeping() {
     const providerCount = state.importedTransactions.filter((item) => item.accountType === "paypal").length;
     if (!providerCount) {
-      setError("Bitte zuerst einen Zahlungsdienstleister-CSV über Universal Beleg Import importieren.");
+      setError("Bitte zuerst einen Zahlungsdienstleister-CSV über Datenimport importieren.");
       return;
     }
     const result = preparePayPalBookkeeping(state);
@@ -55,16 +55,15 @@ export function AccountsPage({ onNavigate }: { onNavigate: (page: PageKey) => vo
   const sortedTransactions = useMemo(() => [...state.importedTransactions].sort((left, right) => `${right.date}|${right.time || ""}`.localeCompare(`${left.date}|${left.time || ""}`)), [state.importedTransactions]);
 
   return <div>
-    <PageHeader title="Bank & Zahlungsabgleich" subtitle="Vendor-neutral: Alle Kontoauszüge, Zahlungsdienstleister-CSV und Monatsberichte werden über Universal Beleg Import hochgeladen und hier geprüft." actions={<div className="document-actions"><Button onClick={() => onNavigate("scan")}>Datei importieren</Button><Button variant="secondary" onClick={reconcile}>Automatisch abgleichen</Button><Button variant="secondary" onClick={prepareBookkeeping}>Zahlungsdienstleister buchen</Button></div>} />
+    <PageHeader title="Bank & Zahlungsabgleich" subtitle="Kontoauszüge, Zahlungsdienstleister-CSV und Monatsberichte werden ausschließlich über Datenimport hochgeladen und hier geprüft." actions={<div className="document-actions"><Button onClick={() => onNavigate("scan")}>Datenimport öffnen</Button><Button variant="secondary" onClick={reconcile}>Automatisch abgleichen</Button><Button variant="secondary" onClick={prepareBookkeeping}>Zahlungsdienstleister buchen</Button></div>} />
     {message ? <div className="alert alert-success">{message}</div> : null}
     {error ? <div className="alert alert-danger">{error}</div> : null}
-    <Card><div className="card-heading"><div><h2>Ein Import für alle Nutzer</h2><p>Neue Dateien bitte über <strong>Universal Beleg Import</strong> hochladen. Du kannst direkt hier starten: Kontoauszug, Zahlungsdienstleister-CSV, PDF, Foto, Tagesabschluss oder Eingangsrechnung.</p></div><Button onClick={() => onNavigate("scan")}>Datei importieren</Button></div></Card>
     <div className="stat-grid"><StatCard label="Bankbewegungen" value={String(bankCount)} detail={`${bankBooked} gebucht · ${bankReview} prüfen`} /><StatCard label="Zahlungsdienstleister" value={String(providerCount)} tone="blue" detail={`${providerInternal} interne Umbuchungen`} /><StatCard label="Gebucht" value={String(providerBooked)} tone="positive" detail={`${providerReviewed} geprüft`} /><StatCard label="Gebühren" value={formatCurrency(providerFees)} tone="negative" detail={`${providerMatched} zugeordnet`} /></div>
     <Card>
       <div className="card-heading"><div><h2>Kontobewegungen</h2><p>Auszahlungen, Bargeldeinzahlungen und Zahlungsdienstleister-Bankbewegungen werden als Umbuchungen behandelt, nicht als doppelte Einnahmen oder Ausgaben.</p></div></div>
-      {sortedTransactions.length === 0 ? <EmptyState icon="accounts" title="Noch keine Kontobewegungen" text="Lade Kontoauszug oder Zahlungsdienstleister-CSV über Universal Beleg Import hoch." action={<Button onClick={() => onNavigate("scan")}>Datei importieren</Button>} /> : <div className="table-wrap"><table className="data-table"><thead><tr><th>Datum</th><th>Konto</th><th>Art</th><th>Gegenpartei / Beschreibung</th><th>Rechnung / Treffer</th><th>Abgleich</th><th>Buchhaltung</th><th>Gebühr</th><th className="align-right">Betrag</th></tr></thead><tbody>{sortedTransactions.map((item) => <TransactionRow key={item.id} item={item} document={state.documents.find((document) => document.id === item.matchedDocumentId)} onReview={() => setSelectedId(item.id)} />)}</tbody></table></div>}
+      {sortedTransactions.length === 0 ? <EmptyState icon="accounts" title="Noch keine Kontobewegungen" text="Kontoauszüge und Zahlungsdienstleister-Dateien werden im zentralen Datenimport hochgeladen." /> : <div className="table-wrap"><table className="data-table"><thead><tr><th>Datum</th><th>Konto</th><th>Art</th><th>Gegenpartei / Beschreibung</th><th>Rechnung / Treffer</th><th>Abgleich</th><th>Buchhaltung</th><th>Gebühr</th><th className="align-right">Betrag</th></tr></thead><tbody>{sortedTransactions.map((item) => <TransactionRow key={item.id} item={item} document={state.documents.find((document) => document.id === item.matchedDocumentId)} onReview={() => setSelectedId(item.id)} />)}</tbody></table></div>}
     </Card>
-    <div className="alert alert-info">Hinweis: Kontoauszüge liefern oft keine sichere Vorsteuer. Lieferantenzahlungen bleiben deshalb zur Prüfung markiert, bis die passende Rechnung über Universal Beleg Import oder Dokumente kontrolliert wurde.</div>
+    <div className="alert alert-info">Hinweis: Kontoauszüge liefern oft keine sichere Vorsteuer. Lieferantenzahlungen bleiben deshalb zur Prüfung markiert, bis die passende Rechnung über Datenimport oder Dokumente kontrolliert wurde.</div>
     <PayPalTransactionReviewModal transaction={selectedTransaction?.accountType === "paypal" ? selectedTransaction : undefined} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
     <BankTransactionReviewModal transaction={selectedTransaction?.accountType === "bank" ? selectedTransaction : undefined} onClose={() => setSelectedId(undefined)} onSaved={setMessage} />
   </div>;

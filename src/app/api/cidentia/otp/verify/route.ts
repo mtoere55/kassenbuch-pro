@@ -5,6 +5,7 @@ import {
   createCidentiaSessionCookie,
 } from "@/lib/cidentia-cookie-session";
 import { CidentiaOtpError, verifyCidentiaOtp } from "@/lib/cidentia-otp";
+import { cidentiaStoragePolicy } from "@/lib/cidentia-storage-policy";
 import { assertOtpRateLimit, OtpRateLimitError } from "@/lib/otp-rate-limit";
 import { assertSameOrigin } from "@/lib/request-origin";
 
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
     assertOtpRateLimit(request, "verify", email);
     const session = await verifyCidentiaOtp(email, code);
     const response = NextResponse.json(
-      { session },
+      { session, storagePolicy: cidentiaStoragePolicy() },
       { headers: { "Cache-Control": "no-store" } },
     );
     response.cookies.set(
