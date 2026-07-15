@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { getTaxAmountFromGross, makeId, nextSequence, todayIso } from "@/lib/accounting";
-import { importBankStatement, parseSparkasseStatement, type BankStatementReport } from "@/lib/bank-statement";
+import { importBankStatement, type BankStatementReport } from "@/lib/bank-statement";
 import { findSupplierInvoiceDuplicate, getSupplierAccount, inferSupplierAccount, supplierInvoiceDuplicateKey } from "@/lib/document-control";
 import { detectDocumentType, parseSupplierInvoice, parseZReport, type ParsedInvoice, type ParsedZReport } from "@/lib/document-parser";
 import { createArchiveImageDataUrl, prepareImageForOcr } from "@/lib/image-ocr";
 import { validateSupplierInvoiceAmounts } from "@/lib/invoice-validation";
-import { readPdfForOcr } from "@/lib/pdf-reader";
+import { readPdfForOcr, readPdfWithLayout } from "@/lib/pdf-reader";
+import { isSupportedSparkasseStatementText, parseSparkasseLayoutStatement } from "@/lib/sparkasse-layout";
 import { parseTransactionsCsv, summarizeImportedTransactions } from "@/lib/csv";
 import { useKassenStore } from "@/lib/store";
 import type { BusinessDocument, ImportedTransaction, LedgerEntry, PaymentMethod } from "@/lib/types";
@@ -69,22 +70,31 @@ export function useScannerController() {
       const kind = await detectFileKind(file);
       let text = "";
       if (kind === "pdf") {
-        const pdf = await readPdfForOcr(file);
-        if (pdf.pageImages.length > 0) { const recognized = await recognizeSources(pdf.pageImages); text = [pdf.embeddedText, recognized].filter(Boolean).join("\n"); setScanInfo(`${pdf.processedPages} von ${pdf.pageCount} PDF-Seiten wurden als Bild erkannt.`); }
-        else { text = pdf.embeddedText; setProgress(100); setScanInfo(`${pdf.processedPages} von ${pdf.pageCount} PDF-Seiten wurden direkt ausgelesen.`); }
+        const layout = await readPdfWithLayout(file);
+        if (isSupportedSparkasseStatementText(layout.text)) {
+          text = layout.text;
+          setProgress(100);
+          setScanInfo(`${layout.processedPages} von ${layout.pageCount} PDF-Seiten wurden positionsgetreu als Sparkasse-Kontoauszug gelesen.`);
+        } else {
+          const pdf = await readPdfForOcr(file);
+          if (pdf.pageImages.length > 0) { const recognized = await recognizeSources(pdf.pageImages); text = [pdf.embeddedText, recognized].filter(Boolean).join("\n"); setScanInfo(`${pdf.processedPages} von ${pdf.pageCount} PDF-Seiten wurden als Bild erkannt.`); }
+          else { text = pdf.embeddedText; setProgress(100); setScanInfo(`${pdf.processedPages} von ${pdf.pageCount} PDF-Seiten wurden direkt ausgelesen.`); }
+        }
       } else if (kind === "image") { const prepared = await prepareImageForOcr(file); text = await recognizeSources(prepared.sources); setScanInfo(prepared.message); }
       else { text = await file.text(); setProgress(100); setScanInfo("Text/CSV-Datei wurde direkt gelesen."); }
       if (!text.trim()) throw new Error("In diesem Dokument konnte kein lesbarer Text erkannt werden.");
       setOcrText(text);
 
-      const bankReport = tryBankStatement(text);
+      const bankReport = parseSparkasseLayoutStatement(text);
       if (bankReport) {
         setUniversalMode("bankStatement"); setBankStatement(bankReport); setTransactions([]); setParsed(undefined);
-        setMessage(`Kontoauszug ${bankReport.statementNumber} erkannt: ${bankReport.transactions.length} Bewegung(en). Mit „Geprüfte Daten übernehmen“ wird er in Bank & Zahlungsabgleich übernommen.`);
-      } else {
+        setMessage(`Kontoauszug ${bankReport.statementNumber} erkannt: ${bankReport.transactions.length} Bewegung(en) vom ${bankReport.periodStart} bis ${bankReport.periodEnd}. Anfangs- und Endbestand wurden rechnerisch geprüft.`);
+      } else if (kind === "text") {
         const transactionGuess = parseUniversalTransactions(text);
         if (transactionGuess.transactions.length) { setUniversalMode(transactionGuess.mode); setTransactions(transactionGuess.transactions); setParsed(undefined); const summary = summarizeImportedTransactions(transactionGuess.transactions); setMessage(`${summary.total} Kontobewegung(en) erkannt. Mit „Geprüfte Daten übernehmen“ werden sie importiert und danach geprüft.`); }
         else { setUniversalMode("document"); applyDocumentType(detectDocumentTypeRobust(text), text); }
+      } else {
+        setUniversalMode("document"); applyDocumentType(detectDocumentTypeRobust(text), text);
       }
       setStatus("done"); setProgress(100);
     } catch (cause) { setStatus(""); setError(cause instanceof Error ? cause.message : "Dokument konnte nicht gelesen werden."); }
@@ -122,7 +132,6 @@ export function useScannerController() {
 
 const numericFields = new Set(["gross", "net", "vat", "cash", "card", "salesCount", "openingCash", "expectedCash", "countedCash", "difference"]);
 async function detectFileKind(file: File): Promise<"pdf" | "image" | "text"> { if (file.type.startsWith("image/")) return "image"; const name = file.name.toLowerCase(); if (file.type === "application/pdf" || name.endsWith(".pdf")) return "pdf"; if (/\.(csv|txt|tsv|xml)$/i.test(name) || file.type.startsWith("text/")) return "text"; const header = String.fromCharCode(...new Uint8Array(await file.slice(0, 5).arrayBuffer())); return header === "%PDF-" ? "pdf" : "text"; }
-function tryBankStatement(text: string): BankStatementReport | undefined { if (!/(kontoauszug|sparkasse|iban|bic|buchungstag)/i.test(text)) return undefined; try { const report = parseSparkasseStatement(text); return report.transactions.length ? report : undefined; } catch { return undefined; } }
 function parseUniversalTransactions(text: string): { mode: UniversalMode; transactions: ImportedTransaction[] } { const paypal = safeTransactions(text, "paypal"); const bank = safeTransactions(text, "bank"); if (paypal.length >= bank.length && paypal.length > 0) return { mode: "paypalCsv", transactions: paypal }; if (bank.length > 0) return { mode: "bankCsv", transactions: bank }; return { mode: "document", transactions: [] }; }
 function safeTransactions(text: string, type: "bank" | "paypal") { try { return parseTransactionsCsv(text, type); } catch { return []; } }
 function detectDocumentTypeRobust(text: string): ScanDocumentType { const direct = detectDocumentType(text); if (direct === "zReport") return direct; const normalized = text.toLowerCase(); const hints = [/tages.?abschluss/, /z.?bericht/, /verkaufs.?ubersicht/, /zahlungs.?ubersicht/, /erwartetes.?bargeld/, /gezahlter.?bargeldbestand/, /anzahl.?verkaufe/]; const score = hints.reduce((sum, pattern) => sum + (pattern.test(normalized) ? 1 : 0), 0); return score >= 2 ? "zReport" : "supplierInvoice"; }
