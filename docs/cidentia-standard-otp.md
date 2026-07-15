@@ -35,11 +35,25 @@ Generate it on the VPS:
 openssl rand -hex 32
 ```
 
-Optional endpoint override:
+Optional endpoint and timeout overrides:
 
 ```env
 CIDENTIA_OTP_BASE=https://api.cidendb.com/api/v1/auth/otp
+CIDENTIA_OTP_TIMEOUT_MS=10000
 ```
+
+The timeout accepts values from 1,000 to 30,000 milliseconds and defaults to 10 seconds.
+
+## Abuse and availability protection
+
+The Kassenbuch server applies an in-process fixed-window limit before contacting Cidentia:
+
+- OTP send: 5 attempts per IP and e-mail combination per 15 minutes; 20 sends per IP.
+- OTP verify: 10 attempts per IP and e-mail combination per 15 minutes; 50 verifies per IP.
+- Rate-limited responses use HTTP `429` and include `Retry-After`.
+- Cidentia network failures are mapped to controlled `502` or `504` responses.
+
+This is the correct protection for the current single-process deployment. A future multi-instance deployment must move counters to a shared store such as Redis or the production database.
 
 ## VPS configuration
 
@@ -65,6 +79,7 @@ POST   /api/cidentia/otp/send
 POST   /api/cidentia/otp/verify
 GET    /api/cidentia/session
 DELETE /api/cidentia/session
+GET    /api/health
 ```
 
 The previous browser localStorage key `kassenbuch-pro.cid-session` is removed automatically by the new gateway. Authentication state is read only from the signed server cookie.

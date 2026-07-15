@@ -4,7 +4,8 @@ import {
   cidentiaSessionCookieOptions,
   createCidentiaSessionCookie,
 } from "@/lib/cidentia-cookie-session";
-import { verifyCidentiaOtp } from "@/lib/cidentia-otp";
+import { CidentiaOtpError, verifyCidentiaOtp } from "@/lib/cidentia-otp";
+import { assertOtpRateLimit, OtpRateLimitError } from "@/lib/otp-rate-limit";
 import { assertSameOrigin } from "@/lib/request-origin";
 
 export const runtime = "nodejs";
@@ -12,8 +13,11 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     assertSameOrigin(request);
-    const body = (await request.json()) as { email?: string; code?: string };
-    const session = await verifyCidentiaOtp(body.email || "", body.code || "");
+    const body = (await request.json()) as { email?: unknown; code?: unknown };
+    const email = typeof body.email === "string" ? body.email : "";
+    const code = typeof body.code === "string" ? body.code : "";
+    assertOtpRateLimit(request, "verify", email);
+    const session = await verifyCidentiaOtp(email, code);
     const response = NextResponse.json(
       { session },
       { headers: { "Cache-Control": "no-store" } },
@@ -25,9 +29,20 @@ export async function POST(request: NextRequest) {
     );
     return response;
   } catch (cause) {
+    const status = errorStatus(cause);
+    const headers: Record<string, string> = { "Cache-Control": "no-store" };
+    if (cause instanceof OtpRateLimitError) {
+      headers["Retry-After"] = String(cause.retryAfterSeconds);
+    }
     return NextResponse.json(
       { error: cause instanceof Error ? cause.message : "Cidentia Anmeldung ist fehlgeschlagen." },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
+      { status, headers },
     );
   }
+}
+
+function errorStatus(cause: unknown): number {
+  if (cause instanceof OtpRateLimitError) return cause.status;
+  if (cause instanceof CidentiaOtpError) return cause.status;
+  return 400;
 }

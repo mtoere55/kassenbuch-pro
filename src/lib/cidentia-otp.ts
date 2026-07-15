@@ -6,9 +6,28 @@ import {
 } from "./cidentia-session";
 
 const DEFAULT_CIDENTIA_OTP_BASE = "https://api.cidendb.com/api/v1/auth/otp";
+const DEFAULT_CIDENTIA_OTP_TIMEOUT_MS = 10_000;
+
+export class CidentiaOtpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = "CidentiaOtpError";
+    this.status = status;
+  }
+}
 
 export function cidentiaOtpBase(): string {
   return (process.env.CIDENTIA_OTP_BASE || DEFAULT_CIDENTIA_OTP_BASE).replace(/\/+$/, "");
+}
+
+export function cidentiaOtpTimeoutMs(): number {
+  const configured = Number(process.env.CIDENTIA_OTP_TIMEOUT_MS);
+  if (Number.isFinite(configured) && configured >= 1_000 && configured <= 30_000) {
+    return Math.round(configured);
+  }
+  return DEFAULT_CIDENTIA_OTP_TIMEOUT_MS;
 }
 
 export function normalizeEmail(value: string): string {
@@ -30,17 +49,19 @@ export function isValidOtpCode(value: string): boolean {
 
 export async function sendCidentiaOtp(emailValue: string): Promise<string> {
   const email = normalizeEmail(emailValue);
-  if (!isValidEmail(email)) throw new Error("Bitte eine gültige E-Mail-Adresse eingeben.");
+  if (!isValidEmail(email)) {
+    throw new CidentiaOtpError("Bitte eine gültige E-Mail-Adresse eingeben.");
+  }
 
-  const response = await fetch(`${cidentiaOtpBase()}/send`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contact: email, contact_type: "email" }),
-    cache: "no-store",
+  const { response, payload } = await postCidentia("send", {
+    contact: email,
+    contact_type: "email",
   });
-  const payload = await readJson(response);
   if (!response.ok) {
-    throw new Error(errorMessage(payload, "Cidentia konnte keinen Bestätigungscode senden."));
+    throw new CidentiaOtpError(
+      errorMessage(payload, "Cidentia konnte keinen Bestätigungscode senden."),
+      upstreamStatus(response.status),
+    );
   }
 
   return textValue(payload, ["message"]) || `Bestätigungscode wurde an ${email} gesendet.`;
@@ -49,27 +70,32 @@ export async function sendCidentiaOtp(emailValue: string): Promise<string> {
 export async function verifyCidentiaOtp(emailValue: string, codeValue: string): Promise<CidentiaSession> {
   const email = normalizeEmail(emailValue);
   const code = normalizeOtpCode(codeValue);
-  if (!isValidEmail(email)) throw new Error("Bitte eine gültige E-Mail-Adresse eingeben.");
-  if (!isValidOtpCode(code)) throw new Error("Bitte den gültigen Bestätigungscode eingeben.");
+  if (!isValidEmail(email)) {
+    throw new CidentiaOtpError("Bitte eine gültige E-Mail-Adresse eingeben.");
+  }
+  if (!isValidOtpCode(code)) {
+    throw new CidentiaOtpError("Bitte den gültigen Bestätigungscode eingeben.");
+  }
 
-  const response = await fetch(`${cidentiaOtpBase()}/verify`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contact: email, contact_type: "email", code }),
-    cache: "no-store",
+  const { response, payload } = await postCidentia("verify", {
+    contact: email,
+    contact_type: "email",
+    code,
   });
-  const payload = await readJson(response);
   if (!response.ok) {
-    throw new Error(errorMessage(payload, "Der Cidentia Bestätigungscode ist ungültig oder abgelaufen."));
+    throw new CidentiaOtpError(
+      errorMessage(payload, "Der Cidentia Bestätigungscode ist ungültig oder abgelaufen."),
+      upstreamStatus(response.status),
+    );
   }
 
   const user = objectValue(payload, ["user", "profile", "identity"]);
-  if (!user) throw new Error("Cidentia hat keine Benutzeridentität zurückgegeben.");
+  if (!user) throw new CidentiaOtpError("Cidentia hat keine Benutzeridentität zurückgegeben.", 502);
 
   const cidValue = textValue(user, ["cid_number", "cid", "ciden_id", "cidenId"]);
-  if (!cidValue) throw new Error("Cidentia hat keine CID zurückgegeben.");
+  if (!cidValue) throw new CidentiaOtpError("Cidentia hat keine CID zurückgegeben.", 502);
   const cid = normalizeCid(cidValue);
-  if (!isValidCid(cid)) throw new Error("Cidentia hat eine ungültige CID zurückgegeben.");
+  if (!isValidCid(cid)) throw new CidentiaOtpError("Cidentia hat eine ungültige CID zurückgegeben.", 502);
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + CIDENTIA_SESSION_TTL_SECONDS * 1000);
@@ -90,13 +116,53 @@ export async function verifyCidentiaOtp(emailValue: string, codeValue: string): 
   };
 }
 
+async function postCidentia(
+  path: "send" | "verify",
+  body: Record<string, string>,
+): Promise<{ response: Response; payload: Record<string, unknown> | undefined }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), cidentiaOtpTimeoutMs());
+
+  try {
+    const response = await fetch(`${cidentiaOtpBase()}/${path}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return { response, payload: await readJson(response) };
+  } catch (cause) {
+    if (controller.signal.aborted) {
+      throw new CidentiaOtpError("Cidentia antwortet derzeit nicht. Bitte erneut versuchen.", 504);
+    }
+    throw new CidentiaOtpError(
+      cause instanceof Error && cause.message
+        ? "Cidentia ist vorübergehend nicht erreichbar."
+        : "Cidentia Verbindung ist fehlgeschlagen.",
+      502,
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function upstreamStatus(status: number): number {
+  if (status === 429) return 429;
+  if (status >= 400 && status < 500) return 400;
+  return 502;
+}
+
 async function readJson(response: Response): Promise<Record<string, unknown> | undefined> {
   const text = await response.text();
   if (!text.trim()) return undefined;
   try {
     return JSON.parse(text) as Record<string, unknown>;
   } catch {
-    return { message: text };
+    return undefined;
   }
 }
 
