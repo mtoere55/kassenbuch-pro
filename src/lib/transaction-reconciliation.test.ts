@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { reconcileImportedState } from "./transaction-reconciliation";
-import type { AppState } from "./types";
+import type { AppState, ImportedTransaction } from "./types";
 
 function stateWithPayPalPayment(): AppState {
   return {
@@ -65,22 +65,24 @@ function stateWithPayPalPayment(): AppState {
   };
 }
 
+function paypalPayment(id: string): ImportedTransaction {
+  return {
+    id,
+    accountType: "paypal",
+    date: "2026-06-27",
+    amount: -64.18,
+    description: "PayPal Express-Zahlung · eBay S.a.r.l.",
+    transactionType: "payment",
+    matchConfidence: 0,
+    status: "new",
+    createdAt: "2026-07-06T02:34:44.000Z",
+  };
+}
+
 describe("imported transaction reconciliation", () => {
   it("matches a PayPal expense with the supplier invoice and ledger entry", () => {
     const state = stateWithPayPalPayment();
-    state.importedTransactions = [
-      {
-        id: "import-1",
-        accountType: "paypal",
-        date: "2026-06-27",
-        amount: -64.18,
-        description: "PayPal Express-Zahlung · eBay S.a.r.l.",
-        transactionType: "payment",
-        matchConfidence: 0,
-        status: "new",
-        createdAt: "2026-07-06T02:34:44.000Z",
-      },
-    ];
+    state.importedTransactions = [paypalPayment("import-1")];
     const result = reconcileImportedState(state);
     expect(result.matched).toBe(1);
     expect(result.state.importedTransactions[0]).toMatchObject({
@@ -90,6 +92,46 @@ describe("imported transaction reconciliation", () => {
       matchConfidence: 90,
     });
     expect(result.state.ledger[0].reconciled).toBe(true);
+  });
+
+  it("does not assign the same document to two new payment rows", () => {
+    const state = stateWithPayPalPayment();
+    state.importedTransactions = [paypalPayment("import-1"), paypalPayment("import-2")];
+    const result = reconcileImportedState(state);
+    expect(result.matched).toBe(1);
+    expect(result.state.importedTransactions[0]).toMatchObject({
+      status: "matched",
+      matchedDocumentId: "doc-1",
+      matchedLedgerEntryId: "ledger-1",
+    });
+    expect(result.state.importedTransactions[1]).toMatchObject({
+      status: "needsReview",
+      matchConfidence: 0,
+    });
+    expect(result.state.importedTransactions[1].matchedDocumentId).toBeUndefined();
+    expect(result.state.importedTransactions[1].matchedLedgerEntryId).toBeUndefined();
+  });
+
+  it("keeps documents reserved by an existing match unavailable", () => {
+    const state = stateWithPayPalPayment();
+    state.importedTransactions = [
+      {
+        ...paypalPayment("import-1"),
+        status: "matched",
+        matchedDocumentId: "doc-1",
+        matchedLedgerEntryId: "ledger-1",
+        matchConfidence: 90,
+      },
+      paypalPayment("import-2"),
+    ];
+    const result = reconcileImportedState(state);
+    expect(result.matched).toBe(0);
+    expect(result.state.importedTransactions[0].status).toBe("matched");
+    expect(result.state.importedTransactions[1]).toMatchObject({
+      status: "needsReview",
+      matchConfidence: 0,
+    });
+    expect(result.state.importedTransactions[1].matchedDocumentId).toBeUndefined();
   });
 
   it("does not match internal PayPal funding rows as revenue", () => {
