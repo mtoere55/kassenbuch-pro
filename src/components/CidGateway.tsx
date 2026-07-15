@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  activateCidStorageScope,
-  clearCidStorageScope,
-} from "@/lib/browser-persistence";
+import { activateCidStorageScope } from "@/lib/browser-persistence";
+import { repairLeakedCidState } from "@/lib/cid-storage-repair";
 import type { CidentiaStoragePolicy } from "@/lib/cidentia-storage-policy";
 import {
   CID_SESSION_KEY,
@@ -51,18 +49,18 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
         if (!response.ok) return;
         const payload = (await response.json()) as ApiPayload;
         if (!cancelled && payload.session && isVerifiedCidentiaSession(payload.session)) {
-          const activation = activateCidStorageScope(
+          activateCidStorageScope(
             payload.session.cid,
             payload.storagePolicy?.legacyOwnerCid,
           );
-          if (activation.changed) {
-            window.location.replace("/");
-            return;
-          }
-          setSession(payload.session);
+          await repairLeakedCidState(
+            payload.session.cid,
+            payload.storagePolicy?.legacyOwnerCid,
+          );
+          if (!cancelled) setSession(payload.session);
         }
-      } catch {
-        // A missing session is a normal logged-out state.
+      } catch (cause) {
+        console.error("Cidentia Sitzung konnte nicht wiederhergestellt werden", cause);
       } finally {
         if (!cancelled) setInitialized(true);
       }
@@ -113,9 +111,15 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
         payload.session.cid,
         payload.storagePolicy?.legacyOwnerCid,
       );
-      window.location.replace("/");
+      await repairLeakedCidState(
+        payload.session.cid,
+        payload.storagePolicy?.legacyOwnerCid,
+      );
+      setSession(payload.session);
+      setMessage("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Cidentia Anmeldung ist fehlgeschlagen.");
+    } finally {
       setLoading(false);
     }
   }
@@ -127,12 +131,19 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
     setMessage("");
   }
 
-  function logout() {
+  async function logout() {
     setLoading(true);
-    void fetch("/api/cidentia/session", { method: "DELETE" }).finally(() => {
-      clearCidStorageScope();
-      window.location.replace("/");
-    });
+    try {
+      await fetch("/api/cidentia/session", { method: "DELETE" });
+    } finally {
+      setSession(undefined);
+      setStep("email");
+      setEmail("");
+      setCode("");
+      setError("");
+      setMessage("");
+      setLoading(false);
+    }
   }
 
   if (!initialized) {
