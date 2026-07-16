@@ -147,16 +147,19 @@ export function createPrifotoCashImportPlan(
     });
   }
 
+  const conflictDates = new Set(conflicts.map((conflict) => conflict.date));
+  const reportSplits = report.days.map((day) => splitDay(day));
+  const importSplits = reportSplits.filter((split) => !skippedDates.has(split.day.date) && !conflictDates.has(split.day.date));
   const documentId = makeId("document");
   const createdAt = new Date().toISOString();
   const allocateCashNumber = createPeriodBookingNumberAllocator("KASSE", current.ledger);
   const entries: LedgerEntry[] = [];
+  let cumulativeOwnGross = 0;
+  let cumulativeOwnVat = 0;
 
-  for (const day of report.days) {
-    if (skippedDates.has(day.date) || conflicts.some((conflict) => conflict.date === day.date)) continue;
+  for (const split of importSplits) {
+    const { day, partnerShare, ownShare } = split;
     const bookingNumber = allocateCashNumber(day.date);
-    const partnerShare = roundMoney(day.amount / 2);
-    const ownShare = roundMoney(day.amount - partnerShare);
     const groupId = `${report.fingerprint}:${day.date}`;
     const sharedNote = `${report.invoiceNumber} · ${day.orders} Bestellung(en) · Prifoto-Tagesverkauf vollständig bar · 50/50-Aufteilung.`;
 
@@ -188,7 +191,10 @@ export function createPrifotoCashImportPlan(
       createdAt,
     });
 
-    const ownVat = getTaxAmountFromGross(ownShare, 19);
+    cumulativeOwnGross = roundMoney(cumulativeOwnGross + ownShare);
+    const nextCumulativeVat = getTaxAmountFromGross(cumulativeOwnGross, 19);
+    const ownVat = roundMoney(nextCumulativeVat - cumulativeOwnVat);
+    cumulativeOwnVat = nextCumulativeVat;
     entries.push({
       id: makeId("ledger"),
       date: day.date,
@@ -218,8 +224,8 @@ export function createPrifotoCashImportPlan(
     });
   }
 
-  const ownShare = roundMoney(report.total / 2);
-  const partnerShare = roundMoney(report.total - ownShare);
+  const partnerShare = roundMoney(reportSplits.reduce((sum, split) => sum + split.partnerShare, 0));
+  const ownShare = roundMoney(reportSplits.reduce((sum, split) => sum + split.ownShare, 0));
   const ownVat = getTaxAmountFromGross(ownShare, 19);
   const document: BusinessDocument = {
     id: documentId,
@@ -249,7 +255,7 @@ export function createPrifotoCashImportPlan(
       productDifference: report.productDifference ?? null,
       paymentAllocation: "all-cash-confirmed",
       prifotoFingerprint: report.fingerprint,
-      importedDays: report.days.length - skippedDates.size - conflicts.length,
+      importedDays: importSplits.length,
       skippedExistingDays: skippedDates.size,
       conflictDays: conflicts.length,
       internallyValidated: true,
@@ -260,7 +266,7 @@ export function createPrifotoCashImportPlan(
   return {
     document,
     entries,
-    importedDays: report.days.length - skippedDates.size - conflicts.length,
+    importedDays: importSplits.length,
     skippedExistingDays: skippedDates.size,
     conflicts,
     totalCash: report.total,
@@ -268,6 +274,11 @@ export function createPrifotoCashImportPlan(
     ownShare,
     ownVat,
   };
+}
+
+function splitDay(day: PrifotoDailySale) {
+  const partnerShare = roundMoney(day.amount / 2);
+  return { day, partnerShare, ownShare: roundMoney(day.amount - partnerShare) };
 }
 
 function existingPrifotoCashByDate(entries: LedgerEntry[]): Map<string, number> {
