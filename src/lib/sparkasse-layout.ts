@@ -1,4 +1,4 @@
-import { parseSparkasseStatement, type BankStatementReport } from "./bank-statement";
+import { parseSparkasseStatement, type BankStatementReport } from "./bank-statement-flexible";
 
 export function isSupportedSparkasseStatementText(text: string): boolean {
   const normalized = text.replace(/\s+/g, " ");
