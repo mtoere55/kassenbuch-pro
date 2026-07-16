@@ -35,6 +35,38 @@ describe("MeinBuch KAS normalization", () => {
     })]);
     expect(entry).toMatchObject({ accountCode: "3430", amount: 550, taxRate: 19, taxAmount: 87.82 });
   });
+
+  it("splits historical Prifoto receipts fifty-fifty while preserving the total cash effect", () => {
+    const entries = normalizeMeinbuchImportEntries([makeEntry({
+      sourceId: "kas:abcd1234:77",
+      description: "Prifoto",
+      amount: 55,
+      cashChange: 55,
+      direction: "transfer",
+      manualKind: "transfer",
+      accountCode: "1592",
+      category: "1592 · Durchlaufende Posten / Prifoto",
+    })]);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      sourceId: "kas:abcd1234:77",
+      documentNumber: "KAS-77",
+      accountCode: "1592",
+      amount: 27.5,
+      cashChange: 27.5,
+      taxRate: 0,
+    });
+    expect(entries[1]).toMatchObject({
+      sourceId: "kas:abcd1234:77:prifoto-provision",
+      documentNumber: "KAS-77",
+      accountCode: "8401",
+      amount: 27.5,
+      cashChange: 27.5,
+      taxRate: 19,
+      taxAmount: 4.39,
+    });
+    expect(entries.reduce((sum, entry) => sum + (entry.cashChange || 0), 0)).toBe(55);
+  });
 });
 
 function makeEntry(patch: Partial<LedgerEntry>): LedgerEntry {
