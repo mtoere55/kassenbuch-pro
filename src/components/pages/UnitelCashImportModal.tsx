@@ -28,15 +28,16 @@ export function UnitelCashImportModal({
   const [fileDataUrl, setFileDataUrl] = useState<string>();
   const [reading, setReading] = useState(false);
   const [error, setError] = useState("");
-  const plan = useMemo<UnitelCashImportPlan | undefined>(() => {
-    if (!file || !report) return undefined;
+  const planned = useMemo<{ plan?: UnitelCashImportPlan; error?: string }>(() => {
+    if (!file || !report) return {};
     try {
-      return createUnitelCashImportPlan(state, report, file.name, fileDataUrl);
+      return { plan: createUnitelCashImportPlan(state, report, file.name, fileDataUrl) };
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Der Importplan konnte nicht erstellt werden.");
-      return undefined;
+      return { error: cause instanceof Error ? cause.message : "Der Importplan konnte nicht erstellt werden." };
     }
   }, [file, fileDataUrl, report, state]);
+  const plan = planned.plan;
+  const visibleError = error || planned.error || "";
 
   async function selectFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0];
@@ -63,10 +64,6 @@ export function UnitelCashImportModal({
 
   function save() {
     if (!report || !plan || plan.conflicts.length) return;
-    if (!plan.entries.length && state.documents.some((document) => document.metadata?.unitelDailyFingerprint === plan.document.metadata?.unitelDailyFingerprint)) {
-      setError("Diese Unitel-Liste wurde bereits vollständig verarbeitet.");
-      return;
-    }
     replaceState({
       ...state,
       documents: [plan.document, ...state.documents],
@@ -104,7 +101,7 @@ export function UnitelCashImportModal({
       <div className="alert alert-info"><strong>Fest bestätigte Geschäftsregel:</strong> Diese Pin-Sales-/Unitel-Verkäufe wurden vollständig bar kassiert und erscheinen nicht im Flatpay-Kassensystem. Deshalb wird jede Tagessumme automatisch in Kasse 1000 gegen Unitel-Verrechnung 1590 gebucht.</div>
       <Field label="Pin-Sales-/Unitel-Verkaufsliste" hint={file?.name || "TXT, TSV oder CSV; auch ohne Kopfzeile"}><Input type="file" accept=".txt,.tsv,.csv,text/plain,text/tab-separated-values,text/csv" onChange={(event) => void selectFile(event)} /></Field>
       {reading ? <div className="alert alert-info">Produktzeilen, Stückzahlen, Tageswerte und Gesamtsumme werden geprüft …</div> : null}
-      {error ? <div className="alert alert-danger">{error}</div> : null}
+      {visibleError ? <div className="alert alert-danger">{visibleError}</div> : null}
       {report && plan ? <>
         <div className="stat-grid">
           <StatCard label="Bar verkauft" value={formatCurrency(report.salesTotal)} detail={`${formatDate(report.startDate)} – ${formatDate(report.endDate)}`} />
