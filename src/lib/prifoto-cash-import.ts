@@ -33,16 +33,40 @@ export interface PrifotoCashConflict {
   difference: number;
 }
 
+export interface PrifotoPartialDay {
+  date: string;
+  reportTotal: number;
+  existingTotal: number;
+  remainingTotal: number;
+}
+
 export interface PrifotoCashImportPlan {
   document: BusinessDocument;
   entries: LedgerEntry[];
   importedDays: number;
+  importedCash: number;
   skippedExistingDays: number;
+  partialDays: PrifotoPartialDay[];
   conflicts: PrifotoCashConflict[];
   totalCash: number;
   partnerShare: number;
   ownShare: number;
   ownVat: number;
+}
+
+interface ExistingPrifotoDay {
+  cashTotal: number;
+  partnerGross: number;
+  ownGross: number;
+  ownVat: number;
+}
+
+interface PrifotoImportSplit {
+  day: PrifotoDailySale;
+  partnerShare: number;
+  ownShare: number;
+  remainingTotal: number;
+  existingTotal: number;
 }
 
 export function parsePrifotoCashReport(text: string): PrifotoCashReport {
@@ -129,104 +153,159 @@ export function createPrifotoCashImportPlan(
   );
   if (duplicate) throw new Error(`Dieser Prifoto-Bericht wurde bereits als ${duplicate.documentNumber} importiert.`);
 
-  const existingByDate = existingPrifotoCashByDate(current.ledger);
+  const existingByDate = existingPrifotoByDate(current.ledger);
   const skippedDates = new Set<string>();
+  const partialDays: PrifotoPartialDay[] = [];
   const conflicts: PrifotoCashConflict[] = [];
+  const importSplits: PrifotoImportSplit[] = [];
+  let existingOwnVat = 0;
+
   for (const day of report.days) {
-    const existingTotal = roundMoney(existingByDate.get(day.date) || 0);
-    if (existingTotal <= TOLERANCE) continue;
+    const existing = existingByDate.get(day.date) || emptyExistingDay();
+    const existingTotal = roundMoney(existing.cashTotal);
+    const target = splitDay(day);
+
+    if (existingTotal > day.amount + TOLERANCE) {
+      conflicts.push({
+        date: day.date,
+        reportTotal: day.amount,
+        existingTotal,
+        difference: roundMoney(day.amount - existingTotal),
+      });
+      continue;
+    }
+
+    const remainingPartner = roundMoney(target.partnerShare - existing.partnerGross);
+    const remainingOwn = roundMoney(target.ownShare - existing.ownGross);
+    const remainingTotal = roundMoney(day.amount - existingTotal);
+    const allocationValid = remainingPartner >= -TOLERANCE && remainingOwn >= -TOLERANCE && close(remainingPartner + remainingOwn, remainingTotal);
+
+    if (!allocationValid) {
+      conflicts.push({
+        date: day.date,
+        reportTotal: day.amount,
+        existingTotal,
+        difference: remainingTotal,
+      });
+      continue;
+    }
+
+    existingOwnVat = roundMoney(existingOwnVat + existing.ownVat);
     if (close(existingTotal, day.amount)) {
       skippedDates.add(day.date);
       continue;
     }
-    conflicts.push({
-      date: day.date,
-      reportTotal: day.amount,
+
+    if (existingTotal > TOLERANCE) {
+      partialDays.push({
+        date: day.date,
+        reportTotal: day.amount,
+        existingTotal,
+        remainingTotal,
+      });
+    }
+
+    importSplits.push({
+      day,
+      partnerShare: Math.max(0, remainingPartner),
+      ownShare: Math.max(0, remainingOwn),
+      remainingTotal,
       existingTotal,
-      difference: roundMoney(day.amount - existingTotal),
     });
   }
 
-  const conflictDates = new Set(conflicts.map((conflict) => conflict.date));
-  const reportSplits = report.days.map((day) => splitDay(day));
-  const importSplits = reportSplits.filter((split) => !skippedDates.has(split.day.date) && !conflictDates.has(split.day.date));
   const documentId = makeId("document");
   const createdAt = new Date().toISOString();
   const allocateCashNumber = createPeriodBookingNumberAllocator("KASSE", current.ledger);
   const entries: LedgerEntry[] = [];
-  let cumulativeOwnGross = 0;
-  let cumulativeOwnVat = 0;
-
-  for (const split of importSplits) {
-    const { day, partnerShare, ownShare } = split;
-    const bookingNumber = allocateCashNumber(day.date);
-    const groupId = `${report.fingerprint}:${day.date}`;
-    const sharedNote = `${report.invoiceNumber} · ${day.orders} Bestellung(en) · Prifoto-Tagesverkauf vollständig bar · 50/50-Aufteilung.`;
-
-    entries.push({
-      id: makeId("ledger"),
-      date: day.date,
-      direction: "transfer",
-      amount: partnerShare,
-      paymentMethod: "cash",
-      description: "Prifoto Fremdanteil / Verrechnung",
-      category: "1592 · Durchlaufende Posten / Prifoto",
-      source: "prifotoImport",
-      sourceId: `prifoto-sales:${report.fingerprint}:${day.date}:partner`,
-      documentId,
-      taxAmount: 0,
-      taxRate: 0,
-      taxMode: "taxFree",
-      reconciled: true,
-      accountCode: "1592",
-      counterAccountCode: "1000",
-      documentNumber: bookingNumber,
-      groupId,
-      cashChange: partnerShare,
-      netAmount: partnerShare,
-      attachmentFileName: fileName,
-      attachmentDataUrl: fileDataUrl,
-      note: sharedNote,
-      manualKind: "transfer",
-      createdAt,
-    });
-
-    cumulativeOwnGross = roundMoney(cumulativeOwnGross + ownShare);
-    const nextCumulativeVat = getTaxAmountFromGross(cumulativeOwnGross, 19);
-    const ownVat = roundMoney(nextCumulativeVat - cumulativeOwnVat);
-    cumulativeOwnVat = nextCumulativeVat;
-    entries.push({
-      id: makeId("ledger"),
-      date: day.date,
-      direction: "income",
-      amount: ownShare,
-      paymentMethod: "cash",
-      description: "Prifoto Eigenanteil / Provision",
-      category: "8401 · Erlöse 19 Prozent / Prifoto Eigenanteil",
-      source: "prifotoImport",
-      sourceId: `prifoto-sales:${report.fingerprint}:${day.date}:own`,
-      documentId,
-      taxAmount: ownVat,
-      taxRate: 19,
-      taxMode: "standard19",
-      reconciled: true,
-      accountCode: "8401",
-      counterAccountCode: "1000",
-      documentNumber: bookingNumber,
-      groupId,
-      cashChange: ownShare,
-      netAmount: roundMoney(ownShare - ownVat),
-      attachmentFileName: fileName,
-      attachmentDataUrl: fileDataUrl,
-      note: sharedNote,
-      manualKind: "income",
-      createdAt,
-    });
-  }
-
+  const reportSplits = report.days.map(splitDay);
   const partnerShare = roundMoney(reportSplits.reduce((sum, split) => sum + split.partnerShare, 0));
   const ownShare = roundMoney(reportSplits.reduce((sum, split) => sum + split.ownShare, 0));
   const ownVat = getTaxAmountFromGross(ownShare, 19);
+  const importedOwnGross = roundMoney(importSplits.reduce((sum, split) => sum + split.ownShare, 0));
+  const importedVatTarget = Math.max(0, roundMoney(ownVat - existingOwnVat));
+  let cumulativeOwnGross = 0;
+  let cumulativeOwnVat = 0;
+
+  for (const [index, split] of importSplits.entries()) {
+    const { day, partnerShare: remainingPartner, ownShare: remainingOwn, existingTotal } = split;
+    const bookingNumber = allocateCashNumber(day.date);
+    const groupId = `${report.fingerprint}:${day.date}`;
+    const completionNote = existingTotal > TOLERANCE
+      ? ` Bereits vorhandener Prifoto-Barbetrag ${money(existingTotal)}; nur Restbetrag ${money(split.remainingTotal)} ergänzt.`
+      : "";
+    const sharedNote = `${report.invoiceNumber} · ${day.orders} Bestellung(en) · Prifoto-Tagesverkauf vollständig bar · 50/50-Aufteilung.${completionNote}`;
+
+    if (remainingPartner > TOLERANCE) {
+      entries.push({
+        id: makeId("ledger"),
+        date: day.date,
+        direction: "transfer",
+        amount: remainingPartner,
+        paymentMethod: "cash",
+        description: existingTotal > TOLERANCE ? "Prifoto Fremdanteil / Restbuchung" : "Prifoto Fremdanteil / Verrechnung",
+        category: "1592 · Durchlaufende Posten / Prifoto",
+        source: "prifotoImport",
+        sourceId: `prifoto-sales:${report.fingerprint}:${day.date}:partner`,
+        documentId,
+        taxAmount: 0,
+        taxRate: 0,
+        taxMode: "taxFree",
+        reconciled: true,
+        accountCode: "1592",
+        counterAccountCode: "1000",
+        documentNumber: bookingNumber,
+        groupId,
+        cashChange: remainingPartner,
+        netAmount: remainingPartner,
+        attachmentFileName: fileName,
+        attachmentDataUrl: fileDataUrl,
+        note: sharedNote,
+        manualKind: "transfer",
+        createdAt,
+      });
+    }
+
+    if (remainingOwn > TOLERANCE) {
+      cumulativeOwnGross = roundMoney(cumulativeOwnGross + remainingOwn);
+      const standardCumulativeVat = getTaxAmountFromGross(cumulativeOwnGross, 19);
+      let entryVat = roundMoney(standardCumulativeVat - cumulativeOwnVat);
+      if (index === importSplits.length - 1) {
+        entryVat = roundMoney(entryVat + importedVatTarget - (cumulativeOwnVat + entryVat));
+      }
+      entryVat = Math.max(0, entryVat);
+      cumulativeOwnVat = roundMoney(cumulativeOwnVat + entryVat);
+      entries.push({
+        id: makeId("ledger"),
+        date: day.date,
+        direction: "income",
+        amount: remainingOwn,
+        paymentMethod: "cash",
+        description: existingTotal > TOLERANCE ? "Prifoto Eigenanteil / Restbuchung" : "Prifoto Eigenanteil / Provision",
+        category: "8401 · Erlöse 19 Prozent / Prifoto Eigenanteil",
+        source: "prifotoImport",
+        sourceId: `prifoto-sales:${report.fingerprint}:${day.date}:own`,
+        documentId,
+        taxAmount: entryVat,
+        taxRate: 19,
+        taxMode: "standard19",
+        reconciled: true,
+        accountCode: "8401",
+        counterAccountCode: "1000",
+        documentNumber: bookingNumber,
+        groupId,
+        cashChange: remainingOwn,
+        netAmount: roundMoney(remainingOwn - entryVat),
+        attachmentFileName: fileName,
+        attachmentDataUrl: fileDataUrl,
+        note: sharedNote,
+        manualKind: "income",
+        createdAt,
+      });
+    }
+  }
+
+  const importedCash = roundMoney(importSplits.reduce((sum, split) => sum + split.remainingTotal, 0));
   const document: BusinessDocument = {
     id: documentId,
     documentNumber: report.invoiceNumber,
@@ -248,6 +327,7 @@ export function createPrifotoCashImportPlan(
       salesDayCount: report.salesDayCount,
       orderCount: report.orderCount,
       totalCash: report.total,
+      importedCash,
       partnerShare,
       ownShare,
       ownVat,
@@ -256,6 +336,7 @@ export function createPrifotoCashImportPlan(
       paymentAllocation: "all-cash-confirmed",
       prifotoFingerprint: report.fingerprint,
       importedDays: importSplits.length,
+      partialDays: partialDays.length,
       skippedExistingDays: skippedDates.size,
       conflictDays: conflicts.length,
       internallyValidated: true,
@@ -267,7 +348,9 @@ export function createPrifotoCashImportPlan(
     document,
     entries,
     importedDays: importSplits.length,
+    importedCash,
     skippedExistingDays: skippedDates.size,
+    partialDays,
     conflicts,
     totalCash: report.total,
     partnerShare,
@@ -281,15 +364,26 @@ function splitDay(day: PrifotoDailySale) {
   return { day, partnerShare, ownShare: roundMoney(day.amount - partnerShare) };
 }
 
-function existingPrifotoCashByDate(entries: LedgerEntry[]): Map<string, number> {
-  const result = new Map<string, number>();
+function existingPrifotoByDate(entries: LedgerEntry[]): Map<string, ExistingPrifotoDay> {
+  const result = new Map<string, ExistingPrifotoDay>();
   for (const entry of entries) {
     if (entry.paymentMethod !== "cash" || (entry.cashChange || 0) <= TOLERANCE) continue;
     const text = `${entry.description} ${entry.category} ${entry.note || ""}`.toLowerCase();
     if (entry.source !== "prifotoImport" && !text.includes("prifoto")) continue;
-    result.set(entry.date, roundMoney((result.get(entry.date) || 0) + (entry.cashChange || 0)));
+    const current = result.get(entry.date) || emptyExistingDay();
+    current.cashTotal = roundMoney(current.cashTotal + (entry.cashChange || 0));
+    if (entry.accountCode === "1592") current.partnerGross = roundMoney(current.partnerGross + entry.amount);
+    if (entry.accountCode === "8401") {
+      current.ownGross = roundMoney(current.ownGross + entry.amount);
+      current.ownVat = roundMoney(current.ownVat + entry.taxAmount);
+    }
+    result.set(entry.date, current);
   }
   return result;
+}
+
+function emptyExistingDay(): ExistingPrifotoDay {
+  return { cashTotal: 0, partnerGross: 0, ownGross: 0, ownVat: 0 };
 }
 
 function readProductTotal(source: string): number | undefined {
