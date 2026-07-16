@@ -15,6 +15,18 @@ SHIFT4 LIMITED Flatpay
 Beispiel Lieferant GmbH
 Kontostand am 30.04.2026 um 20:05 Uhr 1.050,00`;
 
+const valueDateStatement = `S Sparkasse an Volme und Ruhr
+Kontoauszug 5/2026 Seite 1 von 1
+Konto-Nr. 106018000, DE41 4505 0001 0106 0180 00
+Kontostand am 30.04.2026, Auszug Nr. 4 1.000,00
+15.05.2026 GutschriftÜberweisung / Wert: 14.05.2026 76,23
+Shift4 Limited Flatpay
+26.05.2026 GutschriftÜberweisung / Wert: 25.05.2026 54,46
+Shift4 Limited Flatpay
+26.05.2026 Lastschrift / Wert: 25.05.2026 -27,99
+PayPal Europe S.a.r.l. et Cie S.C.A
+Kontostand am 29.05.2026 um 20:05 Uhr 1.102,70`;
+
 describe("Sparkasse positioned PDF import", () => {
   it("recognizes and normalizes rows where date and booking type touch", () => {
     expect(isSupportedSparkasseStatementText(positionedStatement)).toBe(true);
@@ -38,6 +50,23 @@ describe("Sparkasse positioned PDF import", () => {
     }))).toEqual([
       { date: "2026-04-01", amount: 100 },
       { date: "2026-04-02", amount: -50 },
+    ]);
+  });
+
+  it("includes Gutschrift and Lastschrift rows that carry a separate value date", () => {
+    const report = parseSparkasseLayoutStatement(valueDateStatement);
+    expect(report).toMatchObject({
+      statementNumber: "5/2026",
+      openingBalance: 1000,
+      closingBalance: 1102.7,
+    });
+    expect(report?.transactions.map((transaction) => ({
+      bookingType: transaction.bookingType,
+      amount: transaction.amount,
+    }))).toEqual([
+      { bookingType: "GutschriftÜberweisung", amount: 76.23 },
+      { bookingType: "GutschriftÜberweisung", amount: 54.46 },
+      { bookingType: "Lastschrift", amount: -27.99 },
     ]);
   });
 
