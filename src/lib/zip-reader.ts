@@ -84,8 +84,10 @@ async function inflateRaw(compressed: Uint8Array): Promise<Uint8Array> {
   if (typeof DecompressionStream === "undefined") {
     throw new Error("Dieser Browser kann ZIP-Dateien nicht lokal entpacken. Bitte einen aktuellen Edge- oder Chrome-Browser verwenden.");
   }
-  const stream = new Blob([compressed]).stream().pipeThrough(
-    new DecompressionStream("deflate-raw" as never),
+  const copy = new Uint8Array(compressed.byteLength);
+  copy.set(compressed);
+  const stream = new Blob([copy.buffer]).stream().pipeThrough(
+    new DecompressionStream("deflate-raw"),
   );
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
