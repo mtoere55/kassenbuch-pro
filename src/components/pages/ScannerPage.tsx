@@ -6,6 +6,7 @@ import { Icon } from "../Icon";
 import { Badge, Button, Card, Field, PageHeader, Select } from "../ui";
 import { DsfinvkImportModal } from "./DsfinvkImportModal";
 import { MeinbuchImportModal } from "./MeinbuchImportModal";
+import { UnitelCashImportModal } from "./UnitelCashImportModal";
 import { InvoiceFields, ZReportFields } from "./scanner/ReceiptForms";
 import { type ScanDocumentType, useScannerController } from "./scanner/useScannerController";
 
@@ -13,10 +14,11 @@ export function ScannerPage() {
   const scan = useScannerController();
   const [kasOpen, setKasOpen] = useState(false);
   const [flatpayOpen, setFlatpayOpen] = useState(false);
+  const [unitelOpen, setUnitelOpen] = useState(false);
   const [importMessage, setImportMessage] = useState("");
 
   return <div>
-    <PageHeader title="Datenimport" subtitle="Zentrale Importstelle für PDF, Foto, CSV, TXT, Kontoauszug, Tagesabschluss, Eingangsrechnung, Zahlungsberichte, MeinBuch-.kas und Flatpay-DSFinV-K-ZIP." />
+    <PageHeader title="Datenimport" subtitle="Zentrale Importstelle für Belege, Kontoauszüge, MeinBuch, Flatpay und vollständig bar verkaufte Unitel-/Pin-Sales-Guthaben." />
     {scan.error ? <div className="alert alert-danger">{scan.error}</div> : null}
     {scan.message ? <div className="alert alert-success">{scan.message}</div> : null}
     {importMessage ? <div className="alert alert-success">{importMessage}</div> : null}
@@ -33,7 +35,7 @@ export function ScannerPage() {
         {scan.preview ? <div className="scan-preview">{scan.isPdf ? <object data={scan.preview} type="application/pdf" className="pdf-preview"><a href={scan.preview}>PDF öffnen</a></object> : <PreviewImage src={scan.preview} />}</div> : null}
         <Button className="full-button" disabled={!scan.file || scan.isProcessing} onClick={() => void scan.scan()}>{scan.isProcessing ? `Dokument wird gelesen ${scan.progress}%` : "Universal Import auslesen"}</Button>
         {scan.isProcessing ? <div className="progress"><span style={{ width: `${scan.progress}%` }} /></div> : null}
-        <div className="alert alert-info">Kontoauszüge, Zahlungsdienstleister-Dateien, Belege und einzelne Tagesabschlüsse werden hier hochgeladen. Historische und gesammelte Kassenexporte stehen darunter.</div>
+        <div className="alert alert-info">Kontoauszüge, Zahlungsdienstleister-Dateien, Belege und einzelne Tagesabschlüsse werden hier hochgeladen. Strukturierte Spezialexporte stehen darunter.</div>
       </Card>
       <Card>
         <div className="card-heading"><div><h2>Erkannte Daten</h2><p>Dokumenttyp, Konto und Werte können vor dem Buchen korrigiert werden.</p></div>{scan.transactionSummary ? <Badge tone="info">Kontobewegungen</Badge> : scan.parsed ? <Badge tone="success">{scan.parsed.type === "zReport" ? "Tagesabschluss" : "Eingangsrechnung"}</Badge> : null}</div>
@@ -47,6 +49,9 @@ export function ScannerPage() {
     </div>
     <div className="scanner-grid">
       <Card>
+        <div className="card-heading"><div><h2>Unitel Barverkäufe</h2><p>Pin-Sales-Guthaben, die nicht im Kassensystem erscheinen: vollständig bar, täglich in Kasse 1000 und mit eigener Provision auf 8403.</p></div><Button variant="secondary" icon="upload" onClick={() => setUnitelOpen(true)}>Unitel-Liste einlesen</Button></div>
+      </Card>
+      <Card>
         <div className="card-heading"><div><h2>MeinBuch-.kas Historie</h2><p>Das alte Kassenbuch wird vollständig blockweise gelesen, originalgetreu archiviert und auf den neuen Kontenplan abgebildet.</p></div><Button variant="secondary" icon="upload" onClick={() => setKasOpen(true)}>MeinBuch übernehmen</Button></div>
       </Card>
       <Card>
@@ -54,6 +59,7 @@ export function ScannerPage() {
       </Card>
     </div>
     {scan.ocrText ? <Card><details><summary>Ausgelesener Rohtext anzeigen</summary><pre className="ocr-text">{scan.ocrText}</pre></details></Card> : null}
+    <UnitelCashImportModal open={unitelOpen} onClose={() => setUnitelOpen(false)} onImported={(message) => { setImportMessage(message); setUnitelOpen(false); }} />
     <MeinbuchImportModal open={kasOpen} onClose={() => setKasOpen(false)} onImported={(message) => { setImportMessage(message); setKasOpen(false); }} />
     <DsfinvkImportModal open={flatpayOpen} onClose={() => setFlatpayOpen(false)} onImported={(message) => { setImportMessage(message); setFlatpayOpen(false); }} />
   </div>;
