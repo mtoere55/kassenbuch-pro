@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getTaxAmountFromGross } from "./accounting";
 import { createPrifotoCashImportPlan, parsePrifotoCashReport } from "./prifoto-cash-import";
 import type { AppState, LedgerEntry } from "./types";
 
@@ -106,7 +107,9 @@ describe("Prifoto cash PDF import", () => {
     const plan = createPrifotoCashImportPlan(emptyState(), report, "may.pdf");
     expect(plan).toMatchObject({
       importedDays: 17,
+      importedCash: 573,
       skippedExistingDays: 0,
+      partialDays: [],
       totalCash: 573,
       partnerShare: 286.5,
       ownShare: 286.5,
@@ -120,20 +123,44 @@ describe("Prifoto cash PDF import", () => {
     expect(plan.entries.every((entry) => entry.paymentMethod === "cash" && entry.counterAccountCode === "1000")).toBe(true);
   });
 
-  it("skips an exact historical Prifoto day and blocks a differing existing cash total", () => {
+  it("skips a fully existing historical Prifoto day", () => {
     const report = parsePrifotoCashReport(MAY);
-    const exactState = emptyState();
-    exactState.ledger.push(...existingPrifotoDay("2026-05-02", 17));
-    const exactPlan = createPrifotoCashImportPlan(exactState, report, "may.pdf");
-    expect(exactPlan.skippedExistingDays).toBe(1);
-    expect(exactPlan.importedDays).toBe(16);
-    expect(exactPlan.conflicts).toEqual([]);
+    const state = emptyState();
+    state.ledger.push(...existingPrifotoDay("2026-05-02", 17));
+    const plan = createPrifotoCashImportPlan(state, report, "may.pdf");
+    expect(plan.skippedExistingDays).toBe(1);
+    expect(plan.importedDays).toBe(16);
+    expect(plan.importedCash).toBe(556);
+    expect(plan.partialDays).toEqual([]);
+    expect(plan.conflicts).toEqual([]);
+  });
 
-    const conflictState = emptyState();
-    conflictState.ledger.push(...existingPrifotoDay("2026-05-02", 15));
-    const conflictPlan = createPrifotoCashImportPlan(conflictState, report, "may.pdf");
-    expect(conflictPlan.conflicts).toEqual([
-      { date: "2026-05-02", reportTotal: 17, existingTotal: 15, difference: 2 },
+  it("completes the screenshot case: 17 EUR already present on a PDF day of 85 EUR", () => {
+    const report = parsePrifotoCashReport(MAY);
+    const state = emptyState();
+    state.ledger.push(...existingPrifotoDay("2026-05-04", 17));
+    const plan = createPrifotoCashImportPlan(state, report, "may.pdf");
+
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.partialDays).toEqual([
+      { date: "2026-05-04", reportTotal: 85, existingTotal: 17, remainingTotal: 68 },
+    ]);
+    const restEntries = plan.entries.filter((entry) => entry.date === "2026-05-04");
+    expect(restEntries).toHaveLength(2);
+    expect(restEntries).toEqual([
+      expect.objectContaining({ accountCode: "1592", amount: 34, cashChange: 34 }),
+      expect.objectContaining({ accountCode: "8401", amount: 34, cashChange: 34 }),
+    ]);
+    expect(restEntries.reduce((sum, entry) => sum + (entry.cashChange || 0), 0)).toBe(68);
+  });
+
+  it("blocks only when the existing Prifoto cash total is higher than the PDF day", () => {
+    const report = parsePrifotoCashReport(MAY);
+    const state = emptyState();
+    state.ledger.push(...existingPrifotoDay("2026-05-02", 20));
+    const plan = createPrifotoCashImportPlan(state, report, "may.pdf");
+    expect(plan.conflicts).toEqual([
+      { date: "2026-05-02", reportTotal: 17, existingTotal: 20, difference: -3 },
     ]);
   });
 });
@@ -148,6 +175,7 @@ function existingPrifotoDay(date: string, total: number): LedgerEntry[] {
 }
 
 function baseEntry(id: string, date: string, amount: number, accountCode: string, description: string): LedgerEntry {
+  const taxAmount = accountCode === "8401" ? getTaxAmountFromGross(amount, 19) : 0;
   return {
     id,
     date,
@@ -158,14 +186,14 @@ function baseEntry(id: string, date: string, amount: number, accountCode: string
     category: `${accountCode} · Prifoto`,
     source: "kasImport",
     sourceId: `kas:test:${id}`,
-    taxAmount: accountCode === "8401" ? 1 : 0,
+    taxAmount,
     taxRate: accountCode === "8401" ? 19 : 0,
     taxMode: accountCode === "8401" ? "standard19" : "taxFree",
     reconciled: true,
     accountCode,
     counterAccountCode: "1000",
     cashChange: amount,
-    netAmount: amount,
+    netAmount: Math.round((amount - taxAmount) * 100) / 100,
     createdAt: `${date}T12:00:00.000Z`,
   };
 }
