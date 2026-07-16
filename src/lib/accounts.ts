@@ -31,6 +31,7 @@ export const BOOKING_CATEGORIES: BookingCategory[] = [
   { code: "4930", label: "Buerobedarf", side: "out", vat: 19 },
   { code: "4970", label: "Zahlungsgebuehren", side: "out", vat: 0 },
   { code: "4980", label: "Sonstiger Betriebsbedarf", side: "out", vat: 19 },
+  { code: "8300", label: "Erloese 7 Prozent", side: "in", vat: 7 },
   { code: "8336", label: "Erloese Differenzbesteuerung", side: "in", vat: 0 },
   { code: "8338", label: "EU-Dienstleistungserloese / Google", side: "in", vat: 0 },
   { code: "8390", label: "Erloese Differenzbesteuerung KAS", side: "in", vat: 0 },
