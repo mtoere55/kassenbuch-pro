@@ -110,12 +110,13 @@ describe("Prifoto cash PDF import", () => {
       totalCash: 573,
       partnerShare: 286.5,
       ownShare: 286.5,
-      ownVat: 45.75,
+      ownVat: 45.74,
     });
     expect(plan.entries).toHaveLength(34);
     expect(plan.entries.reduce((sum, entry) => sum + (entry.cashChange || 0), 0)).toBe(573);
     expect(plan.entries.filter((entry) => entry.accountCode === "1592").reduce((sum, entry) => sum + entry.amount, 0)).toBe(286.5);
     expect(plan.entries.filter((entry) => entry.accountCode === "8401").reduce((sum, entry) => sum + entry.amount, 0)).toBe(286.5);
+    expect(plan.entries.filter((entry) => entry.accountCode === "8401").reduce((sum, entry) => sum + entry.taxAmount, 0)).toBe(45.74);
     expect(plan.entries.every((entry) => entry.paymentMethod === "cash" && entry.counterAccountCode === "1000")).toBe(true);
   });
 
