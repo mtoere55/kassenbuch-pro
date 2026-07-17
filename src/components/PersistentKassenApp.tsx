@@ -8,6 +8,7 @@ import {
   loadAttachmentRecords,
   mergeStateWithBrowserAttachments,
 } from "@/lib/browser-persistence";
+import { repairHistoricalCashDeposits } from "@/lib/cash-deposit-repair";
 import { KassenProvider, useKassenStore } from "@/lib/store";
 
 if (typeof window !== "undefined") {
@@ -36,10 +37,15 @@ function AttachmentHydrator() {
     restored.current = true;
     let active = true;
 
+    const repairedState = repairHistoricalCashDeposits(state);
+    if (repairedState !== state) {
+      replaceState(repairedState);
+    }
+
     void loadAttachmentRecords()
       .then((records) => {
         if (!active || !records.length) return;
-        replaceState(mergeStateWithBrowserAttachments(state, records));
+        replaceState(mergeStateWithBrowserAttachments(repairedState, records));
       })
       .catch((error) => {
         console.error("Gespeicherte Dokumentdateien konnten nicht geladen werden", error);

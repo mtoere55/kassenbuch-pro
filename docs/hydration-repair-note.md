@@ -1,0 +1,1 @@
+Historical Sparkasse cash-deposit rows are normalized automatically when persisted browser state is hydrated. This avoids requiring a manual visit to the bank reconciliation page before April cash withdrawals appear in the Kassenbuch.
