@@ -6,6 +6,7 @@ import {
   normalizeRuleText,
   validPeriodBookingNumber,
 } from "./business-booking-rules";
+import { repairHistoricalCashDeposits } from "./cash-deposit-repair";
 import { normalizeSaleAccountingState } from "./sale-accounting-normalizer";
 import type {
   AppState,
@@ -86,6 +87,7 @@ export function upsertLearnedBookingRule(state: AppState, rule: LearnedBookingRu
 
 export function applyBookkeepingRulesSafely(current: AppState): AppState {
   const original = current;
+  current = repairHistoricalCashDeposits(current);
   current = normalizeSaleAccountingState(current);
   const rules = getLearnedBookingRules(current)
     .slice()
