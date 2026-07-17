@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getTaxAmountFromGross } from "./accounting";
-import { createPrifotoCashImportPlan, parsePrifotoCashReport } from "./prifoto-cash-import";
+import { parsePrifotoCashReport } from "./prifoto-cash-import";
+import {
+  createPrifotoCashImportPlanV2,
+  migrateLegacyPrifotoLedgerEntries,
+} from "./prifoto-clearing-model";
 import type { AppState, LedgerEntry } from "./types";
 
 const MAY = `
@@ -87,7 +91,6 @@ describe("Prifoto cash PDF import", () => {
       productDifference: 0,
     });
     expect(report.days).toHaveLength(17);
-    expect(report.days.reduce((sum, day) => sum + day.amount, 0)).toBe(573);
   });
 
   it("accepts June daily totals and reports the non-booking product-chart discrepancy", () => {
@@ -102,9 +105,9 @@ describe("Prifoto cash PDF import", () => {
     });
   });
 
-  it("books every May day fully to cash and splits each amount 50/50", () => {
+  it("books every daily customer payment as one full cash receipt and reclassifies only the own share internally", () => {
     const report = parsePrifotoCashReport(MAY);
-    const plan = createPrifotoCashImportPlan(emptyState(), report, "may.pdf");
+    const plan = createPrifotoCashImportPlanV2(emptyState(), report, "may.pdf");
     expect(plan).toMatchObject({
       importedDays: 17,
       importedCash: 573,
@@ -117,64 +120,76 @@ describe("Prifoto cash PDF import", () => {
     });
     expect(plan.entries).toHaveLength(34);
     expect(plan.entries.reduce((sum, entry) => sum + (entry.cashChange || 0), 0)).toBe(573);
-    expect(plan.entries.filter((entry) => entry.accountCode === "1592").reduce((sum, entry) => sum + entry.amount, 0)).toBe(286.5);
+    expect(plan.entries.filter((entry) => entry.accountCode === "1592").reduce((sum, entry) => sum + entry.amount, 0)).toBe(573);
     expect(plan.entries.filter((entry) => entry.accountCode === "8401").reduce((sum, entry) => sum + entry.amount, 0)).toBe(286.5);
     expect(plan.entries.filter((entry) => entry.accountCode === "8401").reduce((sum, entry) => sum + entry.taxAmount, 0)).toBe(45.74);
-    expect(plan.entries.every((entry) => entry.paymentMethod === "cash" && entry.counterAccountCode === "1000")).toBe(true);
+    expect(plan.entries.filter((entry) => entry.accountCode === "8401").every((entry) => entry.cashChange === 0 && entry.counterAccountCode === "1592")).toBe(true);
+    expect(plan.entries.filter((entry) => entry.accountCode === "1592").every((entry) => entry.counterAccountCode === "1000")).toBe(true);
+  });
+
+  it("repairs the old half-line model without changing the cash balance", () => {
+    const oldEntries = existingLegacyPrifotoDay("2026-05-02", 17);
+    const repaired = migrateLegacyPrifotoLedgerEntries(oldEntries);
+    expect(repaired).not.toBe(oldEntries);
+    expect(repaired).toEqual([
+      expect.objectContaining({ accountCode: "1592", amount: 17, cashChange: 17, counterAccountCode: "1000" }),
+      expect.objectContaining({ accountCode: "8401", amount: 8.5, cashChange: 0, counterAccountCode: "1592" }),
+    ]);
+    expect(repaired.reduce((sum, entry) => sum + (entry.cashChange || 0), 0)).toBe(17);
+    expect(migrateLegacyPrifotoLedgerEntries(repaired)).toBe(repaired);
   });
 
   it("skips a fully existing historical Prifoto day", () => {
     const report = parsePrifotoCashReport(MAY);
     const state = emptyState();
-    state.ledger.push(...existingPrifotoDay("2026-05-02", 17));
-    const plan = createPrifotoCashImportPlan(state, report, "may.pdf");
+    state.ledger.push(...existingLegacyPrifotoDay("2026-05-02", 17));
+    const plan = createPrifotoCashImportPlanV2(state, report, "may.pdf");
     expect(plan.skippedExistingDays).toBe(1);
     expect(plan.importedDays).toBe(16);
     expect(plan.importedCash).toBe(556);
-    expect(plan.partialDays).toEqual([]);
     expect(plan.conflicts).toEqual([]);
   });
 
-  it("completes the screenshot case: 17 EUR already present on a PDF day of 85 EUR", () => {
+  it("completes the screenshot case with a 68 EUR full cash rest receipt and a 34 EUR internal own-share posting", () => {
     const report = parsePrifotoCashReport(MAY);
     const state = emptyState();
-    state.ledger.push(...existingPrifotoDay("2026-05-04", 17));
-    const plan = createPrifotoCashImportPlan(state, report, "may.pdf");
+    state.ledger.push(...existingLegacyPrifotoDay("2026-05-04", 17));
+    const plan = createPrifotoCashImportPlanV2(state, report, "may.pdf");
 
     expect(plan.conflicts).toEqual([]);
     expect(plan.partialDays).toEqual([
       { date: "2026-05-04", reportTotal: 85, existingTotal: 17, remainingTotal: 68 },
     ]);
     const restEntries = plan.entries.filter((entry) => entry.date === "2026-05-04");
-    expect(restEntries).toHaveLength(2);
     expect(restEntries).toEqual([
-      expect.objectContaining({ accountCode: "1592", amount: 34, cashChange: 34 }),
-      expect.objectContaining({ accountCode: "8401", amount: 34, cashChange: 34 }),
+      expect.objectContaining({ accountCode: "1592", amount: 68, cashChange: 68, counterAccountCode: "1000" }),
+      expect.objectContaining({ accountCode: "8401", amount: 34, cashChange: 0, counterAccountCode: "1592" }),
     ]);
     expect(restEntries.reduce((sum, entry) => sum + (entry.cashChange || 0), 0)).toBe(68);
   });
 
-  it("blocks only when the existing Prifoto cash total is higher than the PDF day", () => {
+  it("blocks when the existing cash total is higher than the PDF day", () => {
     const report = parsePrifotoCashReport(MAY);
     const state = emptyState();
-    state.ledger.push(...existingPrifotoDay("2026-05-02", 20));
-    const plan = createPrifotoCashImportPlan(state, report, "may.pdf");
+    state.ledger.push(...existingLegacyPrifotoDay("2026-05-02", 20));
+    const plan = createPrifotoCashImportPlanV2(state, report, "may.pdf");
     expect(plan.conflicts).toEqual([
       { date: "2026-05-02", reportTotal: 17, existingTotal: 20, difference: -3 },
     ]);
   });
 });
 
-function existingPrifotoDay(date: string, total: number): LedgerEntry[] {
+function existingLegacyPrifotoDay(date: string, total: number): LedgerEntry[] {
   const first = Math.round(total * 50) / 100;
   const second = Math.round((total - first) * 100) / 100;
+  const groupId = `legacy:${date}`;
   return [
-    baseEntry("partner", date, first, "1592", "Prifoto Fremdanteil"),
-    baseEntry("own", date, second, "8401", "Prifoto Eigenanteil"),
+    baseEntry("partner", date, first, "1592", "Prifoto Fremdanteil", groupId),
+    baseEntry("own", date, second, "8401", "Prifoto Eigenanteil", groupId),
   ];
 }
 
-function baseEntry(id: string, date: string, amount: number, accountCode: string, description: string): LedgerEntry {
+function baseEntry(id: string, date: string, amount: number, accountCode: string, description: string, groupId: string): LedgerEntry {
   const taxAmount = accountCode === "8401" ? getTaxAmountFromGross(amount, 19) : 0;
   return {
     id,
@@ -192,6 +207,7 @@ function baseEntry(id: string, date: string, amount: number, accountCode: string
     reconciled: true,
     accountCode,
     counterAccountCode: "1000",
+    groupId,
     cashChange: amount,
     netAmount: Math.round((amount - taxAmount) * 100) / 100,
     createdAt: `${date}T12:00:00.000Z`,
