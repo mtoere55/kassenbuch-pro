@@ -6,6 +6,7 @@ import { readPdfWithLayout } from "@/lib/pdf-reader";
 import { parsePrifotoCashReport, type PrifotoCashReport } from "@/lib/prifoto-cash-import";
 import {
   createPrifotoCashImportPlanV2,
+  migrateLegacyPrifotoState,
   type PrifotoCashImportPlanV2,
 } from "@/lib/prifoto-clearing-model";
 import { useKassenStore } from "@/lib/store";
@@ -66,10 +67,11 @@ export function PrifotoCashImportModal({
 
   function save() {
     if (!report || !plan || plan.conflicts.length) return;
+    const normalizedState = migrateLegacyPrifotoState(state);
     replaceState({
-      ...state,
-      documents: [plan.document, ...state.documents],
-      ledger: [...plan.entries, ...state.ledger],
+      ...normalizedState,
+      documents: [plan.document, ...normalizedState.documents],
+      ledger: [...plan.entries, ...normalizedState.ledger],
     });
     onImported([
       `${report.invoiceNumber} wurde geprüft und archiviert.`,
@@ -77,6 +79,7 @@ export function PrifotoCashImportModal({
       plan.partialDays.length ? `${plan.partialDays.length} teilweise vorhandene Tagessumme(n) wurden nur um den fehlenden Kassenbetrag ergänzt.` : "",
       plan.skippedExistingDays ? `${plan.skippedExistingDays} vollständig vorhandene Tagessumme(n) wurden nicht doppelt gebucht.` : "",
       `Der Gesamtbericht enthält ${formatCurrency(plan.partnerShare)} Prifoto-Verbindlichkeit auf 1592 und ${formatCurrency(plan.ownShare)} eigenen Bruttoertrag auf 8401 mit ${formatCurrency(plan.ownVat)} Umsatzsteuer.`,
+      "Frühere halbierte Prifoto-Kassenzeilen wurden automatisch auf eine vollständige Barzeile plus interne Umbuchung korrigiert.",
     ].filter(Boolean).join(" "));
     reset();
     onClose();
