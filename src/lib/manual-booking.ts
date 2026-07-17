@@ -86,6 +86,15 @@ export function entryCashEffect(entry: LedgerEntry): number {
   return 0;
 }
 
+export function matchesCashbookPaymentFilter(
+  entry: LedgerEntry,
+  payment: "all" | PaymentMethod,
+): boolean {
+  if (payment === "all") return true;
+  if (payment === "cash") return Math.abs(entryCashEffect(entry)) > 0.004;
+  return entry.paymentMethod === payment;
+}
+
 export function includedTax(amount: number, rate: number): number {
   return rate ? getTaxAmountFromGross(amount, rate) : 0;
 }
