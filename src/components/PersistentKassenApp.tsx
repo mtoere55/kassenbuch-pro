@@ -8,6 +8,7 @@ import {
   loadAttachmentRecords,
   mergeStateWithBrowserAttachments,
 } from "@/lib/browser-persistence";
+import { ensureApril2026OpeningCash } from "@/lib/cash-opening-balance";
 import { repairHistoricalCashDeposits } from "@/lib/cash-deposit-repair";
 import { KassenProvider, useKassenStore } from "@/lib/store";
 
@@ -38,14 +39,15 @@ function AttachmentHydrator() {
     let active = true;
 
     const repairedState = repairHistoricalCashDeposits(state);
-    if (repairedState !== state) {
-      replaceState(repairedState);
+    const migratedState = ensureApril2026OpeningCash(repairedState);
+    if (migratedState !== state) {
+      replaceState(migratedState);
     }
 
     void loadAttachmentRecords()
       .then((records) => {
         if (!active || !records.length) return;
-        replaceState(mergeStateWithBrowserAttachments(repairedState, records));
+        replaceState(mergeStateWithBrowserAttachments(migratedState, records));
       })
       .catch((error) => {
         console.error("Gespeicherte Dokumentdateien konnten nicht geladen werden", error);
