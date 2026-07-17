@@ -12,7 +12,7 @@ export function normalizeMeinbuchImportEntries(entries: LedgerEntry[]): LedgerEn
       : "MeinBuch-Datensatz unverändert übernommen.";
 
     if (isPrifotoReceipt(entry)) {
-      return splitPrifotoEntry(entry, originalReference, originalNote);
+      return modelPrifotoEntry(entry, originalReference, originalNote);
     }
 
     const mapped = entry.accountCode === "0000" ? mapLegacyMerchant(entry.description) : undefined;
@@ -29,31 +29,29 @@ export function normalizeMeinbuchImportEntries(entries: LedgerEntry[]): LedgerEn
   });
 }
 
-function splitPrifotoEntry(entry: LedgerEntry, documentNumber: string | undefined, originalNote: string): LedgerEntry[] {
-  const ownShare = roundMoney(entry.amount / 2);
-  const partnerShare = roundMoney(entry.amount - ownShare);
-  const originalCashChange = entry.cashChange || 0;
-  const ownCashChange = roundMoney(originalCashChange / 2);
-  const partnerCashChange = roundMoney(originalCashChange - ownCashChange);
+function modelPrifotoEntry(entry: LedgerEntry, documentNumber: string | undefined, originalNote: string): LedgerEntry[] {
+  const fullCash = roundMoney(entry.amount);
+  const ownShare = roundMoney(fullCash / 2);
   const taxAmount = getTaxAmountFromGross(ownShare, 19);
   const groupId = entry.groupId || entry.sourceId || entry.id;
   const sharedNote = appendNote(
     appendNote(entry.note, originalNote),
-    "Historischer Prifoto-Vorgang nach Geschäftsregel 50/50 auf Prifoto-Verrechnung und eigenen Provisionserlös verteilt.",
+    "Prifoto-Clearingmodell v2: vollständiger Kundenbetrag in Kasse 1000; Eigenanteil intern von 1592 auf 8401 umgebucht.",
   );
 
-  const clearing: LedgerEntry = {
+  const cashReceipt: LedgerEntry = {
     ...entry,
-    amount: partnerShare,
+    amount: fullCash,
     direction: "transfer",
-    description: "Prifoto Fremdanteil / Verrechnung",
+    description: "Prifoto Tagesverkauf bar / Gesamtbetrag",
     category: "1592 · Durchlaufende Posten / Prifoto",
     accountCode: "1592",
+    counterAccountCode: "1000",
     taxAmount: 0,
     taxRate: 0,
     taxMode: "taxFree",
-    netAmount: partnerShare,
-    cashChange: partnerCashChange,
+    netAmount: fullCash,
+    cashChange: entry.cashChange || fullCash,
     documentNumber,
     groupId,
     manualKind: "transfer",
@@ -67,14 +65,15 @@ function splitPrifotoEntry(entry: LedgerEntry, documentNumber: string | undefine
     sourceId: entry.sourceId ? `${entry.sourceId}:prifoto-provision` : undefined,
     amount: ownShare,
     direction: "income",
-    description: "Prifoto Eigenanteil / Provision",
+    description: "Prifoto Eigenanteil / interne Umbuchung",
     category: "8401 · Erlöse 19 Prozent / Prifoto Eigenanteil",
     accountCode: "8401",
+    counterAccountCode: "1592",
     taxAmount,
     taxRate: 19,
     taxMode: "standard19",
     netAmount: roundMoney(ownShare - taxAmount),
-    cashChange: ownCashChange,
+    cashChange: 0,
     documentNumber,
     groupId,
     manualKind: "income",
@@ -82,7 +81,7 @@ function splitPrifotoEntry(entry: LedgerEntry, documentNumber: string | undefine
     note: sharedNote,
   };
 
-  return [clearing, commission];
+  return [cashReceipt, commission];
 }
 
 function isPrifotoReceipt(entry: LedgerEntry): boolean {
