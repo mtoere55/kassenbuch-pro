@@ -36,7 +36,7 @@ describe("MeinBuch KAS normalization", () => {
     expect(entry).toMatchObject({ accountCode: "3430", amount: 550, taxRate: 19, taxAmount: 87.82 });
   });
 
-  it("splits historical Prifoto receipts fifty-fifty while preserving the total cash effect", () => {
+  it("books the full historical Prifoto receipt to cash and reclassifies only the own share internally", () => {
     const entries = normalizeMeinbuchImportEntries([makeEntry({
       sourceId: "kas:abcd1234:77",
       description: "Prifoto",
@@ -52,16 +52,18 @@ describe("MeinBuch KAS normalization", () => {
       sourceId: "kas:abcd1234:77",
       documentNumber: "KAS-77",
       accountCode: "1592",
-      amount: 27.5,
-      cashChange: 27.5,
+      counterAccountCode: "1000",
+      amount: 55,
+      cashChange: 55,
       taxRate: 0,
     });
     expect(entries[1]).toMatchObject({
       sourceId: "kas:abcd1234:77:prifoto-provision",
       documentNumber: "KAS-77",
       accountCode: "8401",
+      counterAccountCode: "1592",
       amount: 27.5,
-      cashChange: 27.5,
+      cashChange: 0,
       taxRate: 19,
       taxAmount: 4.39,
     });
