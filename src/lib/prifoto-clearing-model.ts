@@ -105,7 +105,6 @@ export function createPrifotoCashImportPlanV2(
   const partnerShare = roundMoney(reportSplits.reduce((sum, split) => sum + split.partnerShare, 0));
   const ownShare = roundMoney(reportSplits.reduce((sum, split) => sum + split.ownShare, 0));
   const ownVat = getTaxAmountFromGross(ownShare, 19);
-  const importedOwnGross = roundMoney(importDays.reduce((sum, item) => sum + item.remainingOwn, 0));
   const importedVatTarget = Math.max(0, roundMoney(ownVat - existingOwnVat));
   let cumulativeOwnGross = 0;
   let cumulativeOwnVat = 0;
@@ -273,7 +272,6 @@ export function migrateLegacyPrifotoLedgerEntries(entries: LedgerEntry[]): Ledge
     if (!clearing || !commission) continue;
 
     const totalCash = roundMoney((clearing.cashChange || 0) + (commission.cashChange || 0));
-    const markerNote = appendNote(clearing.note, `${MODEL_MARKER}; historische Halbzeilen ohne Änderung des Kassenbestands korrigiert.`);
     replacements.set(clearing.id, {
       ...clearing,
       amount: totalCash,
@@ -283,7 +281,7 @@ export function migrateLegacyPrifotoLedgerEntries(entries: LedgerEntry[]): Ledge
       counterAccountCode: "1000",
       cashChange: totalCash,
       netAmount: totalCash,
-      note: markerNote,
+      note: appendNote(clearing.note, `${MODEL_MARKER}; historische Halbzeilen ohne Änderung des Kassenbestands korrigiert.`),
     });
     replacements.set(commission.id, {
       ...commission,
