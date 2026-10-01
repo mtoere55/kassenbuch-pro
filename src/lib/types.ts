@@ -20,6 +20,7 @@ export type PageKey =
   | "documents"
   | "ledger"
   | "accounts"
+  | "finance"
   | "settings";
 export type DocumentType =
   | "invoice"
