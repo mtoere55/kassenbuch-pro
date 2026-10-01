@@ -77,6 +77,11 @@ export function createEmptyBrowserState(): AppState {
       currency: "EUR",
       language: "de",
       openingCash: 0,
+      tradeTaxMultiplier: 520,
+      otherTaxableIncome: 0,
+      vatPrepayments: 0,
+      incomeTaxPrepayments: 0,
+      tradeTaxPrepayments: 0,
     },
   };
 }

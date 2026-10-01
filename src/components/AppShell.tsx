@@ -11,6 +11,7 @@ import { CustomersPage } from "./pages/CustomersPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DevicesPage } from "./pages/DevicesPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
+import { FinancePage } from "./pages/FinancePage";
 import { LedgerImportPage } from "./pages/LedgerImportPage";
 import { PurchasePage } from "./pages/PurchasePage";
 import { RepairPage } from "./pages/RepairPage";
@@ -29,6 +30,7 @@ const mainNav: Array<{ key: PageKey; icon: IconName }> = [
   { key: "documents", icon: "documents" },
   { key: "ledger", icon: "ledger" },
   { key: "accounts", icon: "accounts" },
+  { key: "finance", icon: "ledger" },
 ];
 
 export function AppShell({
@@ -84,6 +86,7 @@ function renderPage(page: PageKey, navigate: (page: PageKey) => void) {
     case "documents": return <DocumentsPage />;
     case "ledger": return <LedgerImportPage />;
     case "accounts": return <AccountsPage onNavigate={navigate} />;
+    case "finance": return <FinancePage />;
     case "settings": return <SettingsPage />;
   }
 }

@@ -20,6 +20,7 @@ export type PageKey =
   | "documents"
   | "ledger"
   | "accounts"
+  | "finance"
   | "settings";
 export type DocumentType =
   | "invoice"
@@ -246,6 +247,11 @@ export interface BusinessSettings {
   currency: "EUR";
   language: "de" | "tr" | "en";
   openingCash: number;
+  tradeTaxMultiplier?: number;
+  otherTaxableIncome?: number;
+  vatPrepayments?: number;
+  incomeTaxPrepayments?: number;
+  tradeTaxPrepayments?: number;
 }
 
 export interface AppState {
