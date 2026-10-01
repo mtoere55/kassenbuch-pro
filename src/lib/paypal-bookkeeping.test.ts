@@ -28,7 +28,7 @@ describe("PayPal bookkeeping", () => {
       direction: "expense",
       amount: 78.11,
       paymentMethod: "paypal",
-      accountCode: "3200",
+      accountCode: "3400",
       taxRate: 0,
       counterAccountCode: "1370",
     });
@@ -55,7 +55,7 @@ describe("PayPal bookkeeping", () => {
     )!;
     const reviewed = reviewPayPalTransaction(prepared.state, transaction.id, {
       description: "Wareneinkauf otara GmbH",
-      accountCode: "3200",
+      accountCode: "3400",
       taxRate: 19,
       direction: "expense",
       paymentMethod: "paypal",
@@ -65,7 +65,7 @@ describe("PayPal bookkeeping", () => {
       taxRate: 19,
       taxAmount: 12.47,
       netAmount: 65.64,
-      accountCode: "3200",
+      accountCode: "3400",
     });
     expect(
       reviewed.importedTransactions.find((item) => item.id === transaction.id)?.bookkeepingStatus,
@@ -75,7 +75,7 @@ describe("PayPal bookkeeping", () => {
   it("suggests accounts conservatively by known PayPal vendor", () => {
     expect(suggestPayPalAccount(transaction("Google Ireland Limited"))).toBe("4610");
     expect(suggestPayPalAccount(transaction("softwarenetz.de"))).toBe("4980");
-    expect(suggestPayPalAccount(transaction("eBay S.a.r.l."))).toBe("3200");
+    expect(suggestPayPalAccount(transaction("eBay S.a.r.l."))).toBe("3400");
     expect(suggestPayPalAccount(transaction("Unknown vendor"))).toBe("0000");
   });
 });
