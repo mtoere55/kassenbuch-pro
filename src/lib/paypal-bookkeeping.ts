@@ -39,6 +39,11 @@ export function preparePayPalBookkeeping(current: AppState): PayPalPostingResult
       .filter((transaction) => transaction.accountType === "paypal" && transaction.externalId)
       .map((transaction) => [transaction.externalId as string, transaction]),
   );
+  const reservedTransferLedgerIds = new Set(
+    reconciled.importedTransactions
+      .filter((transaction) => transaction.accountType === "paypal" && isInternalTransfer(transaction) && transaction.matchedLedgerEntryId)
+      .map((transaction) => transaction.matchedLedgerEntryId as string),
+  );
 
   let createdEntries = 0;
   let linkedEntries = 0;
@@ -81,6 +86,22 @@ export function preparePayPalBookkeeping(current: AppState): PayPalPostingResult
           transaction.bookkeepingStatus ||
           (isInternalTransfer(transaction) ? ("reviewed" as const) : ("booked" as const)),
         suggestedAccountCode: existingBySource.accountCode,
+      };
+    }
+
+    const existingInternalTransfer = isInternalTransfer(transaction)
+      ? findExistingInternalTransfer(ledger, transaction, reservedTransferLedgerIds)
+      : undefined;
+    if (existingInternalTransfer) {
+      reservedTransferLedgerIds.add(existingInternalTransfer.id);
+      linkedEntries += 1;
+      transferEntries += 1;
+      return {
+        ...transaction,
+        matchedLedgerEntryId: existingInternalTransfer.id,
+        bookkeepingStatus: "reviewed" as const,
+        suggestedAccountCode: existingInternalTransfer.accountCode,
+        status: "ignored" as const,
       };
     }
 
@@ -214,7 +235,7 @@ export function suggestPayPalAccount(transaction: ImportedTransaction): string {
     value.includes("mas trade") ||
     value.includes("joybuy")
   ) {
-    return "3200";
+    return "3400";
   }
   return "0000";
 }
@@ -404,4 +425,23 @@ function paymentAccount(method: PaymentMethod): string {
 
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+
+function findExistingInternalTransfer(
+  ledger: LedgerEntry[],
+  transaction: ImportedTransaction,
+  reservedIds: Set<string>,
+): LedgerEntry | undefined {
+  const amount = Math.abs(transaction.grossAmount ?? transaction.amount);
+  const funding = transaction.transactionType === "bankFunding";
+  const withdrawal = transaction.transactionType === "bankWithdrawal";
+  if (!funding && !withdrawal) return undefined;
+  return ledger.find((entry) => {
+    if (reservedIds.has(entry.id) || entry.source !== "bankImport" || entry.direction !== "transfer") return false;
+    if (entry.date !== transaction.date || Math.abs(entry.amount - amount) > 0.02) return false;
+    return funding
+      ? entry.accountCode === "1370" && entry.counterAccountCode === "1200"
+      : entry.accountCode === "1200" && entry.counterAccountCode === "1370";
+  });
 }
