@@ -8,6 +8,7 @@ import { detectDocumentType, parseSupplierInvoice, parseZReport, type ParsedInvo
 import { createArchiveImageDataUrl, prepareImageForOcr } from "@/lib/image-ocr";
 import { validateSupplierInvoiceAmounts } from "@/lib/invoice-validation";
 import { readPdfForOcr, readPdfWithLayout } from "@/lib/pdf-reader";
+import { importPayPalMonthlyStatement, isPayPalMonthlyStatementText, parsePayPalMonthlyStatement, type PayPalMonthlyStatement } from "@/lib/paypal-pdf-import";
 import { parsePrifotoCashReport, type PrifotoCashReport } from "@/lib/prifoto-cash-import";
 import { createPrifotoCashImportPlanV2, migrateLegacyPrifotoState } from "@/lib/prifoto-clearing-model";
 import { isSupportedSparkasseStatementText, parseSparkasseLayoutStatement } from "@/lib/sparkasse-layout";
@@ -17,7 +18,7 @@ import type { BusinessDocument, ImportedTransaction, LedgerEntry, PaymentMethod 
 
 export type ParsedScan = ParsedZReport | ParsedInvoice;
 export type ScanDocumentType = ParsedScan["type"];
-type UniversalMode = "document" | "bankCsv" | "paypalCsv" | "bankStatement" | "prifotoReport";
+type UniversalMode = "document" | "bankCsv" | "paypalCsv" | "bankStatement" | "prifotoReport" | "paypalReport";
 
 const MAX_SCAN_BYTES = 20 * 1024 * 1024;
 const MAX_INLINE_ARCHIVE_BYTES = 3 * 1024 * 1024;
@@ -41,6 +42,7 @@ export function useScannerController() {
   const [transactions, setTransactions] = useState<ImportedTransaction[]>([]);
   const [bankStatement, setBankStatement] = useState<BankStatementReport>();
   const [prifotoReport, setPrifotoReport] = useState<PrifotoCashReport>();
+  const [paypalReport, setPaypalReport] = useState<PayPalMonthlyStatement>();
 
   const isPdf = Boolean(file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")));
 
@@ -51,7 +53,7 @@ export function useScannerController() {
     if (selected.size > MAX_SCAN_BYTES) return setError("Die Datei ist größer als 20 MB. Bitte die Datei verkleinern oder teilen.");
     if (preview) URL.revokeObjectURL(preview);
     setError(""); setFile(selected); setPreview(selected.type.startsWith("image/") || selected.type === "application/pdf" || selected.name.toLowerCase().endsWith(".pdf") ? URL.createObjectURL(selected) : undefined);
-    setParsed(undefined); setTransactions([]); setBankStatement(undefined); setPrifotoReport(undefined); setUniversalMode("document"); setOcrText(""); setMessage(""); setScanInfo(""); setProgress(0);
+    setParsed(undefined); setTransactions([]); setBankStatement(undefined); setPrifotoReport(undefined); setPaypalReport(undefined); setUniversalMode("document"); setOcrText(""); setMessage(""); setScanInfo(""); setProgress(0);
   }
 
   async function recognizeSources(sources: Array<File | Blob>) {
@@ -68,13 +70,17 @@ export function useScannerController() {
 
   async function scan() {
     if (!file) return;
-    setError(""); setMessage(""); setStatus("processing"); setProgress(0); setScanInfo(""); setTransactions([]); setBankStatement(undefined); setPrifotoReport(undefined);
+    setError(""); setMessage(""); setStatus("processing"); setProgress(0); setScanInfo(""); setTransactions([]); setBankStatement(undefined); setPrifotoReport(undefined); setPaypalReport(undefined);
     try {
       const kind = await detectFileKind(file);
       let text = "";
       if (kind === "pdf") {
         const layout = await readPdfWithLayout(file);
-        if (isPrifotoCashReportText(layout.text)) {
+        if (isPayPalMonthlyStatementText(layout.text)) {
+          text = layout.text;
+          setProgress(100);
+          setScanInfo(`${layout.processedPages} von ${layout.pageCount} PDF-Seiten wurden direkt als PayPal-Monatskontoauszug mit Einzeltransaktionen gelesen.`);
+        } else if (isPrifotoCashReportText(layout.text)) {
           text = layout.text;
           setProgress(100);
           setScanInfo(`${layout.processedPages} von ${layout.pageCount} PDF-Seiten wurden direkt als Prifoto-Umsatzbericht mit Tagesverkäufen gelesen.`);
@@ -92,19 +98,23 @@ export function useScannerController() {
       if (!text.trim()) throw new Error("In diesem Dokument konnte kein lesbarer Text erkannt werden.");
       setOcrText(text);
 
-      if (isPrifotoCashReportText(text)) {
+      if (isPayPalMonthlyStatementText(text)) {
+        const report = parsePayPalMonthlyStatement(text);
+        setUniversalMode("paypalReport"); setPaypalReport(report); setPrifotoReport(undefined); setBankStatement(undefined); setTransactions([]); setParsed(undefined);
+        setMessage(`PayPal-Monatskontoauszug erkannt: ${report.transactions.length} Einzeltransaktionen, ${formatMoney(Math.abs(report.sentPayments))} gesendete Zahlungen und ${formatMoney(report.credits)} Bankgutschriften. Anfangs- und Endsaldo wurden geprüft.`);
+      } else if (isPrifotoCashReportText(text)) {
         const report = parsePrifotoCashReport(text);
-        setUniversalMode("prifotoReport"); setPrifotoReport(report); setBankStatement(undefined); setTransactions([]); setParsed(undefined);
+        setUniversalMode("prifotoReport"); setPrifotoReport(report); setPaypalReport(undefined); setBankStatement(undefined); setTransactions([]); setParsed(undefined);
         setMessage(`Prifoto-Umsatzbericht ${report.invoiceNumber} erkannt: ${report.salesDayCount} Verkaufstag(e), ${formatMoney(report.total)} vollständig bar. Die Tagesumsätze werden mit ihrem jeweiligen Verkaufsdatum ins Kassenbuch übernommen.`);
       } else {
         const bankReport = parseSparkasseLayoutStatement(text);
         if (bankReport) {
-          setUniversalMode("bankStatement"); setBankStatement(bankReport); setPrifotoReport(undefined); setTransactions([]); setParsed(undefined);
+          setUniversalMode("bankStatement"); setBankStatement(bankReport); setPrifotoReport(undefined); setPaypalReport(undefined); setTransactions([]); setParsed(undefined);
           setMessage(`Kontoauszug ${bankReport.statementNumber} erkannt: ${bankReport.transactions.length} Bewegung(en) vom ${bankReport.periodStart} bis ${bankReport.periodEnd}. Anfangs- und Endbestand wurden rechnerisch geprüft.`);
         } else if (kind === "text") {
           const transactionGuess = parseUniversalTransactions(text);
-          if (transactionGuess.transactions.length) { setUniversalMode(transactionGuess.mode); setPrifotoReport(undefined); setTransactions(transactionGuess.transactions); setParsed(undefined); const summary = summarizeImportedTransactions(transactionGuess.transactions); setMessage(`${summary.total} Kontobewegung(en) erkannt. Mit „Geprüfte Daten übernehmen“ werden sie importiert und danach geprüft.`); }
-          else { setUniversalMode("document"); setPrifotoReport(undefined); applyDocumentType(detectDocumentTypeRobust(text), text); }
+          if (transactionGuess.transactions.length) { setUniversalMode(transactionGuess.mode); setPrifotoReport(undefined); setPaypalReport(undefined); setTransactions(transactionGuess.transactions); setParsed(undefined); const summary = summarizeImportedTransactions(transactionGuess.transactions); setMessage(`${summary.total} Kontobewegung(en) erkannt. Mit „Geprüfte Daten übernehmen“ werden sie importiert und danach geprüft.`); }
+          else { setUniversalMode("document"); setPrifotoReport(undefined); setPaypalReport(undefined); applyDocumentType(detectDocumentTypeRobust(text), text); }
         } else {
           setUniversalMode("document"); setPrifotoReport(undefined); applyDocumentType(detectDocumentTypeRobust(text), text);
         }
@@ -113,7 +123,7 @@ export function useScannerController() {
     } catch (cause) { setStatus(""); setError(cause instanceof Error ? cause.message : "Dokument konnte nicht gelesen werden."); }
   }
 
-  function applyDocumentType(type: ScanDocumentType, text = ocrText) { setTransactions([]); setBankStatement(undefined); setPrifotoReport(undefined); setUniversalMode("document"); if (type === "zReport") { setParsed(parseZReport(text)); return; } const invoice = parseSupplierInvoice(text); setParsed(invoice); setAccountCode(inferSupplierAccount(invoice.vendor || "", text).code); }
+  function applyDocumentType(type: ScanDocumentType, text = ocrText) { setTransactions([]); setBankStatement(undefined); setPrifotoReport(undefined); setPaypalReport(undefined); setUniversalMode("document"); if (type === "zReport") { setParsed(parseZReport(text)); return; } const invoice = parseSupplierInvoice(text); setParsed(invoice); setAccountCode(inferSupplierAccount(invoice.vendor || "", text).code); }
   function updateField(key: string, value: string) { setParsed((current) => current ? ({ ...current, [key]: numericFields.has(key) ? Number(value.replace(",", ".")) || 0 : value } as ParsedScan) : current); }
 
   async function originalFileDataUrl() { if (!file) return undefined; if (file.type.startsWith("image/")) return createArchiveImageDataUrl(file); if (file.size > MAX_INLINE_ARCHIVE_BYTES) return undefined; return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); }); }
@@ -131,6 +141,14 @@ export function useScannerController() {
   async function save() {
     setError("");
     try {
+      if (paypalReport) {
+        const dataUrl = file && file.size <= MAX_INLINE_ARCHIVE_BYTES ? await originalFileDataUrl() : undefined;
+        const result = importPayPalMonthlyStatement(state, paypalReport, file?.name || "PayPal-Monatskontoauszug", dataUrl);
+        replaceState(result.state);
+        setMessage(`${result.importedTransactions} PayPal-Transaktion(en) wurden importiert. ${result.createdEntries} Buchung(en) erstellt, ${result.linkedEntries} bestehende Bankbuchung(en) verbunden; ${result.reviewCount} Lieferantenzahlung(en) warten auf den Beleg.`);
+        setPaypalReport(undefined);
+        return;
+      }
       if (prifotoReport) {
         const dataUrl = file && file.size <= MAX_INLINE_ARCHIVE_BYTES ? await originalFileDataUrl() : undefined;
         const plan = createPrifotoCashImportPlanV2(state, prifotoReport, file?.name || "Prifoto-Umsatzbericht", dataUrl);
@@ -154,7 +172,7 @@ export function useScannerController() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Dokument konnte nicht gespeichert werden."); }
   }
 
-  return { file, preview, progress, isProcessing: status === "processing", isPdf, ocrText, parsed, bookSales, paymentMethod, accountCode, invoicePaid, message, error, scanInfo, prifotoSummary: prifotoReport ? { invoiceNumber: prifotoReport.invoiceNumber, total: prifotoReport.total, salesDayCount: prifotoReport.salesDayCount, orderCount: prifotoReport.orderCount, periodStart: prifotoReport.periodStart, periodEnd: prifotoReport.periodEnd } : undefined, transactionSummary: bankStatement ? `${bankStatement.transactions.length} Bankbewegung(en) · Kontoauszug ${bankStatement.statementNumber}` : transactions.length ? `${transactions.length} Kontobewegung(en) · ${universalMode === "paypalCsv" ? "Zahlungsdienstleister" : "Bank/Konto"}` : "", differenceWarning: parsed?.type === "zReport" && Boolean(parsed.difference), incompleteWarning: parsed ? getIncompleteWarning(parsed) : "", chooseFile, scan, save, applyDocumentType, updateField, setBookSales, setPaymentMethod, setAccountCode, setInvoicePaid };
+  return { file, preview, progress, isProcessing: status === "processing", isPdf, ocrText, parsed, bookSales, paymentMethod, accountCode, invoicePaid, message, error, scanInfo, paypalSummary: paypalReport ? { total: paypalReport.transactions.length, sentPayments: paypalReport.sentPayments, credits: paypalReport.credits, openingBalance: paypalReport.openingBalance, closingBalance: paypalReport.closingBalance, periodStart: paypalReport.periodStart, periodEnd: paypalReport.periodEnd } : undefined, prifotoSummary: prifotoReport ? { invoiceNumber: prifotoReport.invoiceNumber, total: prifotoReport.total, salesDayCount: prifotoReport.salesDayCount, orderCount: prifotoReport.orderCount, periodStart: prifotoReport.periodStart, periodEnd: prifotoReport.periodEnd } : undefined, transactionSummary: bankStatement ? `${bankStatement.transactions.length} Bankbewegung(en) · Kontoauszug ${bankStatement.statementNumber}` : transactions.length ? `${transactions.length} Kontobewegung(en) · ${universalMode === "paypalCsv" ? "Zahlungsdienstleister" : "Bank/Konto"}` : "", differenceWarning: parsed?.type === "zReport" && Boolean(parsed.difference), incompleteWarning: parsed ? getIncompleteWarning(parsed) : "", chooseFile, scan, save, applyDocumentType, updateField, setBookSales, setPaymentMethod, setAccountCode, setInvoicePaid };
 }
 
 const numericFields = new Set(["gross", "net", "vat", "cash", "card", "salesCount", "openingCash", "expectedCash", "countedCash", "difference"]);

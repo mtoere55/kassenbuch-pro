@@ -6,6 +6,7 @@ import { Icon } from "../Icon";
 import { Badge, Button, Card, Field, PageHeader, Select } from "../ui";
 import { DsfinvkImportModal } from "./DsfinvkImportModal";
 import { MeinbuchImportModal } from "./MeinbuchImportModal";
+import { PayPalPdfImportModal } from "./PayPalPdfImportModal";
 import { PrifotoCashImportModal } from "./PrifotoCashImportModal";
 import { UnitelCashImportModal } from "./UnitelCashImportModal";
 import { InvoiceFields, ZReportFields } from "./scanner/ReceiptForms";
@@ -17,10 +18,11 @@ export function ScannerPage() {
   const [flatpayOpen, setFlatpayOpen] = useState(false);
   const [unitelOpen, setUnitelOpen] = useState(false);
   const [prifotoOpen, setPrifotoOpen] = useState(false);
+  const [paypalOpen, setPaypalOpen] = useState(false);
   const [importMessage, setImportMessage] = useState("");
 
   return <div>
-    <PageHeader title="Datenimport" subtitle="Zentrale Importstelle für Belege, Kontoauszüge, MeinBuch, Flatpay, Unitel-Barverkäufe und Prifoto-Tagesverkäufe." />
+    <PageHeader title="Datenimport" subtitle="Zentrale Importstelle für Belege, Kontoauszüge, PayPal, MeinBuch, Flatpay, Unitel-Barverkäufe und Prifoto-Tagesverkäufe." />
     {scan.error ? <div className="alert alert-danger">{scan.error}</div> : null}
     {scan.message ? <div className="alert alert-success">{scan.message}</div> : null}
     {importMessage ? <div className="alert alert-success">{importMessage}</div> : null}
@@ -40,13 +42,13 @@ export function ScannerPage() {
         <div className="alert alert-info">Kontoauszüge, Zahlungsdienstleister-Dateien, Belege und einzelne Tagesabschlüsse werden hier hochgeladen. Strukturierte Spezialexporte stehen darunter.</div>
       </Card>
       <Card>
-        <div className="card-heading"><div><h2>Erkannte Daten</h2><p>Dokumenttyp, Konto und Werte können vor dem Buchen korrigiert werden.</p></div>{scan.prifotoSummary ? <Badge tone="success">Prifoto Tagesverkäufe</Badge> : scan.transactionSummary ? <Badge tone="info">Kontobewegungen</Badge> : scan.parsed ? <Badge tone="success">{scan.parsed.type === "zReport" ? "Tagesabschluss" : "Eingangsrechnung"}</Badge> : null}</div>
-        {scan.prifotoSummary ? <div className="calculation-box"><h3>Prifoto-Umsatzbericht erkannt</h3><div><span>Bericht</span><strong>{scan.prifotoSummary.invoiceNumber}</strong></div><div><span>Zeitraum</span><strong>{scan.prifotoSummary.periodStart} – {scan.prifotoSummary.periodEnd}</strong></div><div><span>Verkaufstage</span><strong>{scan.prifotoSummary.salesDayCount}</strong></div><div><span>Bestellungen</span><strong>{scan.prifotoSummary.orderCount}</strong></div><div><span>Bar gesamt</span><strong>{formatCurrency(scan.prifotoSummary.total)}</strong></div><div><span>Buchung</span><strong>Jeder Tagesumsatz wird auf sein Verkaufsdatum in Kasse 1000 gebucht.</strong></div></div> : scan.transactionSummary ? <div className="calculation-box"><h3>CSV / Kontoexport erkannt</h3><div><span>Erkannt</span><strong>{scan.transactionSummary}</strong></div><div><span>Nächster Schritt</span><strong>Importieren, dann Bank & Zahlungsabgleich prüfen</strong></div></div> : null}
+        <div className="card-heading"><div><h2>Erkannte Daten</h2><p>Dokumenttyp, Konto und Werte können vor dem Buchen korrigiert werden.</p></div>{scan.paypalSummary ? <Badge tone="info">PayPal Monatsauszug</Badge> : scan.prifotoSummary ? <Badge tone="success">Prifoto Tagesverkäufe</Badge> : scan.transactionSummary ? <Badge tone="info">Kontobewegungen</Badge> : scan.parsed ? <Badge tone="success">{scan.parsed.type === "zReport" ? "Tagesabschluss" : "Eingangsrechnung"}</Badge> : null}</div>
+        {scan.paypalSummary ? <div className="calculation-box"><h3>PayPal-Monatskontoauszug erkannt</h3><div><span>Zeitraum</span><strong>{scan.paypalSummary.periodStart} – {scan.paypalSummary.periodEnd}</strong></div><div><span>Einzeltransaktionen</span><strong>{scan.paypalSummary.total}</strong></div><div><span>Gesendete Zahlungen</span><strong>{formatCurrency(Math.abs(scan.paypalSummary.sentPayments))}</strong></div><div><span>Bank → PayPal</span><strong>{formatCurrency(scan.paypalSummary.credits)}</strong></div><div><span>Anfang / Ende</span><strong>{formatCurrency(scan.paypalSummary.openingBalance)} → {formatCurrency(scan.paypalSummary.closingBalance)}</strong></div><div><span>Buchung</span><strong>Lieferantenzahlungen über 1370; Bankgutschriften nur interne Umbuchung.</strong></div></div> : scan.prifotoSummary ? <div className="calculation-box"><h3>Prifoto-Umsatzbericht erkannt</h3><div><span>Bericht</span><strong>{scan.prifotoSummary.invoiceNumber}</strong></div><div><span>Zeitraum</span><strong>{scan.prifotoSummary.periodStart} – {scan.prifotoSummary.periodEnd}</strong></div><div><span>Verkaufstage</span><strong>{scan.prifotoSummary.salesDayCount}</strong></div><div><span>Bestellungen</span><strong>{scan.prifotoSummary.orderCount}</strong></div><div><span>Bar gesamt</span><strong>{formatCurrency(scan.prifotoSummary.total)}</strong></div><div><span>Buchung</span><strong>Jeder Tagesumsatz wird auf sein Verkaufsdatum in Kasse 1000 gebucht.</strong></div></div> : scan.transactionSummary ? <div className="calculation-box"><h3>CSV / Kontoexport erkannt</h3><div><span>Erkannt</span><strong>{scan.transactionSummary}</strong></div><div><span>Nächster Schritt</span><strong>Importieren, dann Bank & Zahlungsabgleich prüfen</strong></div></div> : null}
         {scan.parsed ? <Field label="Dokumenttyp" hint="Bei falscher Erkennung manuell umstellen."><Select value={scan.parsed.type} onChange={(event) => scan.applyDocumentType(event.target.value as ScanDocumentType)}><option value="zReport">Tagesabschluss / Z-Bericht</option><option value="supplierInvoice">Eingangsrechnung / Beleg</option></Select></Field> : null}
         {scan.incompleteWarning ? <div className="alert alert-warning">{scan.incompleteWarning}</div> : null}
-        {!scan.parsed && !scan.transactionSummary && !scan.prifotoSummary ? <div className="scanner-placeholder"><Icon name="documents" width={34} height={34} /><p>Nach dem Auslesen erscheinen hier erkannte Werte, Kontobewegungen oder ein Prüfformular.</p></div> : scan.parsed?.type === "zReport" ? <ZReportFields parsed={scan.parsed} update={scan.updateField} bookSales={scan.bookSales} setBookSales={scan.setBookSales} /> : scan.parsed ? <InvoiceFields parsed={scan.parsed} update={scan.updateField} payment={scan.paymentMethod} setPayment={scan.setPaymentMethod} account={scan.accountCode} setAccount={scan.setAccountCode} paid={scan.invoicePaid} setPaid={scan.setInvoicePaid} /> : null}
+        {!scan.parsed && !scan.transactionSummary && !scan.prifotoSummary && !scan.paypalSummary ? <div className="scanner-placeholder"><Icon name="documents" width={34} height={34} /><p>Nach dem Auslesen erscheinen hier erkannte Werte, Kontobewegungen oder ein Prüfformular.</p></div> : scan.parsed?.type === "zReport" ? <ZReportFields parsed={scan.parsed} update={scan.updateField} bookSales={scan.bookSales} setBookSales={scan.setBookSales} /> : scan.parsed ? <InvoiceFields parsed={scan.parsed} update={scan.updateField} payment={scan.paymentMethod} setPayment={scan.setPaymentMethod} account={scan.accountCode} setAccount={scan.setAccountCode} paid={scan.invoicePaid} setPaid={scan.setInvoicePaid} /> : null}
         {scan.differenceWarning && scan.parsed?.type === "zReport" ? <div className="alert alert-danger">Kassenabweichung erkannt: {formatCurrency(Number(scan.parsed.difference))}. Bitte prüfen.</div> : null}
-        {(scan.parsed || scan.transactionSummary || scan.prifotoSummary) ? <Button className="full-button" onClick={() => void scan.save()}>{scan.prifotoSummary ? "Prifoto-Tagesverkäufe ins Kassenbuch übernehmen" : "Geprüfte Daten übernehmen"}</Button> : null}
+        {(scan.parsed || scan.transactionSummary || scan.prifotoSummary || scan.paypalSummary) ? <Button className="full-button" onClick={() => void scan.save()}>{scan.paypalSummary ? "PayPal-Monatsauszug übernehmen" : scan.prifotoSummary ? "Prifoto-Tagesverkäufe ins Kassenbuch übernehmen" : "Geprüfte Daten übernehmen"}</Button> : null}
       </Card>
     </div>
     <div className="scanner-grid">
@@ -55,6 +57,9 @@ export function ScannerPage() {
       </Card>
       <Card>
         <div className="card-heading"><div><h2>Prifoto Tagesverkäufe</h2><p>Monats-PDF mit täglichen Barumsätzen. Jeder Tag wird 50/50 auf Prifoto-Verrechnung 1592 und Eigenanteil 8401 gebucht.</p></div><Button variant="secondary" icon="upload" onClick={() => setPrifotoOpen(true)}>Prifoto-PDF einlesen</Button></div>
+      </Card>
+      <Card>
+        <div className="card-heading"><div><h2>PayPal Monatsauszug</h2><p>PayPal-PDF mit Einzeltransaktionen. Lieferantenzahlungen laufen über 1370 PayPal; Bankgutschriften werden als interne Bank/PayPal-Umbuchung erkannt.</p></div><Button variant="secondary" icon="upload" onClick={() => setPaypalOpen(true)}>PayPal-PDF einlesen</Button></div>
       </Card>
       <Card>
         <div className="card-heading"><div><h2>MeinBuch-.kas Historie</h2><p>Das alte Kassenbuch wird vollständig blockweise gelesen, originalgetreu archiviert und auf den neuen Kontenplan abgebildet.</p></div><Button variant="secondary" icon="upload" onClick={() => setKasOpen(true)}>MeinBuch übernehmen</Button></div>
@@ -66,6 +71,7 @@ export function ScannerPage() {
     {scan.ocrText ? <Card><details><summary>Ausgelesener Rohtext anzeigen</summary><pre className="ocr-text">{scan.ocrText}</pre></details></Card> : null}
     <UnitelCashImportModal open={unitelOpen} onClose={() => setUnitelOpen(false)} onImported={(message) => { setImportMessage(message); setUnitelOpen(false); }} />
     <PrifotoCashImportModal open={prifotoOpen} onClose={() => setPrifotoOpen(false)} onImported={(message) => { setImportMessage(message); setPrifotoOpen(false); }} />
+    <PayPalPdfImportModal open={paypalOpen} onClose={() => setPaypalOpen(false)} onImported={(message) => { setImportMessage(message); setPaypalOpen(false); }} />
     <MeinbuchImportModal open={kasOpen} onClose={() => setKasOpen(false)} onImported={(message) => { setImportMessage(message); setKasOpen(false); }} />
     <DsfinvkImportModal open={flatpayOpen} onClose={() => setFlatpayOpen(false)} onImported={(message) => { setImportMessage(message); setFlatpayOpen(false); }} />
   </div>;
