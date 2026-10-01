@@ -68,13 +68,17 @@ export function useScannerController() {
 
   async function scan() {
     if (!file) return;
-    setError(""); setMessage(""); setStatus("processing"); setProgress(0); setScanInfo(""); setTransactions([]); setBankStatement(undefined);
+    setError(""); setMessage(""); setStatus("processing"); setProgress(0); setScanInfo(""); setTransactions([]); setBankStatement(undefined); setPrifotoReport(undefined);
     try {
       const kind = await detectFileKind(file);
       let text = "";
       if (kind === "pdf") {
         const layout = await readPdfWithLayout(file);
-        if (isSupportedSparkasseStatementText(layout.text)) {
+        if (isPrifotoCashReportText(layout.text)) {
+          text = layout.text;
+          setProgress(100);
+          setScanInfo(`${layout.processedPages} von ${layout.pageCount} PDF-Seiten wurden direkt als Prifoto-Umsatzbericht mit Tagesverkäufen gelesen.`);
+        } else if (isSupportedSparkasseStatementText(layout.text)) {
           text = layout.text;
           setProgress(100);
           setScanInfo(`${layout.processedPages} von ${layout.pageCount} PDF-Seiten wurden positionsgetreu als Sparkasse-Kontoauszug gelesen.`);
