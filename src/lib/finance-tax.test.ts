@@ -35,6 +35,21 @@ describe("finance tax forecast", () => {
     expect(result.vatLiability).toBe(95);
   });
 
+  it("keeps stale legacy clearing rows out even when their direction is wrongly stored as expense", () => {
+    const state = emptyState();
+    state.ledger.push(
+      { ...entry("expense", 1750, 279.41, "1000", "2026-07-01"), manualKind: "transfer", description: "Kasse an Bank" },
+      { ...entry("expense", 1750, 279.41, "1590", "2026-07-02"), manualKind: "expense", description: "UniTel Guthaben-Verrechnung" },
+      { ...entry("expense", 240, 38.32, "1592", "2026-07-07"), manualKind: "expense", description: "Prifoto 50/50-Verrechnung" },
+      { ...entry("expense", 107.87, 17.22, "1370", "2026-07-14"), manualKind: "expense", description: "Bank an PayPal" },
+      entry("expense", 121.71, 19.43, "4140", "2026-07-06"),
+    );
+    const result = buildFinanceForecast(state, 2026, new Date("2026-10-01T12:00:00Z"));
+    expect(result.expenseGross).toBe(121.71);
+    expect(result.expenseNet).toBe(102.28);
+    expect(result.inputVat).toBe(19.43);
+  });
+
   it("counts PayPal supplier payments without invoice as missing-receipt quality issues", () => {
     const state = emptyState();
     state.ledger.push({

@@ -179,10 +179,14 @@ function buildMonth(entries: LedgerEntry[], year: number, monthNumber: number): 
   };
 }
 
+const NEUTRAL_ACCOUNT_CODES = new Set(["1000", "1200", "1360", "1370", "1590", "1591", "1592", "1800", "1890"]);
+
 function isOperatingEntry(entry: LedgerEntry): boolean {
   if (entry.direction === "transfer") return false;
-  if (entry.manualKind === "private") return false;
-  if (entry.accountCode === "1800" || entry.accountCode === "1890") return false;
+  if (entry.manualKind === "transfer" || entry.manualKind === "private") return false;
+  if (entry.accountCode && NEUTRAL_ACCOUNT_CODES.has(entry.accountCode)) return false;
+  const text = `${entry.description} ${entry.category} ${entry.note || ""}`.toLowerCase();
+  if (/(kasse an bank|bank an paypal|paypal an bank|flatpay-auszahlung|durchlaufende posten|unitel.*verrechnung|prifoto.*verrechnung)/.test(text)) return false;
   if (isTaxPayment(entry)) return false;
   return entry.direction === "income" || entry.direction === "expense";
 }
