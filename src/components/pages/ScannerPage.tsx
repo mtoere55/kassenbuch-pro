@@ -6,6 +6,7 @@ import { Icon } from "../Icon";
 import { Badge, Button, Card, Field, PageHeader, Select } from "../ui";
 import { DsfinvkImportModal } from "./DsfinvkImportModal";
 import { MeinbuchImportModal } from "./MeinbuchImportModal";
+import { PayPalPdfImportModal } from "./PayPalPdfImportModal";
 import { PrifotoCashImportModal } from "./PrifotoCashImportModal";
 import { UnitelCashImportModal } from "./UnitelCashImportModal";
 import { InvoiceFields, ZReportFields } from "./scanner/ReceiptForms";
@@ -17,10 +18,11 @@ export function ScannerPage() {
   const [flatpayOpen, setFlatpayOpen] = useState(false);
   const [unitelOpen, setUnitelOpen] = useState(false);
   const [prifotoOpen, setPrifotoOpen] = useState(false);
+  const [paypalOpen, setPaypalOpen] = useState(false);
   const [importMessage, setImportMessage] = useState("");
 
   return <div>
-    <PageHeader title="Datenimport" subtitle="Zentrale Importstelle für Belege, Kontoauszüge, MeinBuch, Flatpay, Unitel-Barverkäufe und Prifoto-Tagesverkäufe." />
+    <PageHeader title="Datenimport" subtitle="Zentrale Importstelle für Belege, Kontoauszüge, PayPal, MeinBuch, Flatpay, Unitel-Barverkäufe und Prifoto-Tagesverkäufe." />
     {scan.error ? <div className="alert alert-danger">{scan.error}</div> : null}
     {scan.message ? <div className="alert alert-success">{scan.message}</div> : null}
     {importMessage ? <div className="alert alert-success">{importMessage}</div> : null}
@@ -57,6 +59,9 @@ export function ScannerPage() {
         <div className="card-heading"><div><h2>Prifoto Tagesverkäufe</h2><p>Monats-PDF mit täglichen Barumsätzen. Jeder Tag wird 50/50 auf Prifoto-Verrechnung 1592 und Eigenanteil 8401 gebucht.</p></div><Button variant="secondary" icon="upload" onClick={() => setPrifotoOpen(true)}>Prifoto-PDF einlesen</Button></div>
       </Card>
       <Card>
+        <div className="card-heading"><div><h2>PayPal Monatsauszug</h2><p>PayPal-PDF mit Einzeltransaktionen. Lieferantenzahlungen laufen über 1370 PayPal; Bankgutschriften werden als interne Bank/PayPal-Umbuchung erkannt.</p></div><Button variant="secondary" icon="upload" onClick={() => setPaypalOpen(true)}>PayPal-PDF einlesen</Button></div>
+      </Card>
+      <Card>
         <div className="card-heading"><div><h2>MeinBuch-.kas Historie</h2><p>Das alte Kassenbuch wird vollständig blockweise gelesen, originalgetreu archiviert und auf den neuen Kontenplan abgebildet.</p></div><Button variant="secondary" icon="upload" onClick={() => setKasOpen(true)}>MeinBuch übernehmen</Button></div>
       </Card>
       <Card>
@@ -66,6 +71,7 @@ export function ScannerPage() {
     {scan.ocrText ? <Card><details><summary>Ausgelesener Rohtext anzeigen</summary><pre className="ocr-text">{scan.ocrText}</pre></details></Card> : null}
     <UnitelCashImportModal open={unitelOpen} onClose={() => setUnitelOpen(false)} onImported={(message) => { setImportMessage(message); setUnitelOpen(false); }} />
     <PrifotoCashImportModal open={prifotoOpen} onClose={() => setPrifotoOpen(false)} onImported={(message) => { setImportMessage(message); setPrifotoOpen(false); }} />
+    <PayPalPdfImportModal open={paypalOpen} onClose={() => setPaypalOpen(false)} onImported={(message) => { setImportMessage(message); setPaypalOpen(false); }} />
     <MeinbuchImportModal open={kasOpen} onClose={() => setKasOpen(false)} onImported={(message) => { setImportMessage(message); setKasOpen(false); }} />
     <DsfinvkImportModal open={flatpayOpen} onClose={() => setFlatpayOpen(false)} onImported={(message) => { setImportMessage(message); setFlatpayOpen(false); }} />
   </div>;
