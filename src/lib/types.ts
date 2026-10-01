@@ -246,6 +246,11 @@ export interface BusinessSettings {
   currency: "EUR";
   language: "de" | "tr" | "en";
   openingCash: number;
+  tradeTaxMultiplier?: number;
+  otherTaxableIncome?: number;
+  vatPrepayments?: number;
+  incomeTaxPrepayments?: number;
+  tradeTaxPrepayments?: number;
 }
 
 export interface AppState {
