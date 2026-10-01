@@ -186,7 +186,7 @@ function parseTransactionTable(section: string): ImportedTransaction[] {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index].trim();
     if (!line) continue;
-    if (/^(Hinweis:|Copyright|Boulevard Royal|Seite\s+\d+)/i.test(line)) break;
+    if (/^(Hinweis:|Copyright|Boulevard Royal|Seite\\s+\\d+|Händlerkonto-ID:|Transaktionsübersicht\\s*-\\s*EUR|Datum\\s+Typ\\s+Name)/i.test(line)) {\n      pendingType = "";\n      currentType = "";\n      continue;\n    }
 
     if (isTypePrefix(line)) {
       pendingType = line;
