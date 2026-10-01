@@ -43,6 +43,36 @@ TopPortrait Digital Download 33,00 € (5,8%)
 Retusche_de 12,00 € (2,1%)
 `;
 
+const JULY = `
+Umsatzbericht
+Prifoto GmbH Kleppingstr. 28, 44135 Dortmund
+Ali Sun Kundennummer: 168
+Badstraße 6 Rechnungnummer: RE-010720263383
+Rechnungsdatum: 04.08.2026
+58095 Hagen
+Zeitraum: Juli 2026
+Gesamtumsatz Bestellungen Tagesdurchschnitt Bester Tag
+396,00 € 26 44,00 € Dienstag, 07.07. 126,00 €
+Datum Wochentag Umsatz Bestellungen
+07.07. Dienstag 126,00 € 8
+08.07. Mittwoch 16,00 € 2
+09.07. Donnerstag 68,00 € 4
+10.07. Freitag 34,00 € 2
+13.07. Montag 34,00 € 3
+14.07. Dienstag 33,00 € 2
+15.07. Mittwoch 34,00 € 2
+16.07. Donnerstag 34,00 € 2
+17.07. Freitag 17,00 € 1
+Gesamt 9 Tage mit Umsatz 396,00 € 26
+Produktanteile
+Fotoshooting EU 322,00 € (69,1%)
+Fotoshooting Frei 69,00 € (14,8%)
+4x2 DE 46,00 € (9,9%)
+TopPortrait Digital Download 20,00 € (4,3%)
+Benutzerdefiniert 6,00 € (1,3%)
+Retusche_de 3,00 € (0,6%)
+`;
+
 const JUNE = `
 Umsatzbericht
 Prifoto GmbH Kleppingstr. 28, 44135 Dortmund
@@ -91,6 +121,42 @@ describe("Prifoto cash PDF import", () => {
       productDifference: 0,
     });
     expect(report.days).toHaveLength(17);
+  });
+
+  it("parses the uploaded July report as nine dated daily cash sales, not as an invoice", () => {
+    const report = parsePrifotoCashReport(JULY);
+    expect(report).toMatchObject({
+      invoiceNumber: "RE-010720263383",
+      invoiceDate: "2026-08-04",
+      periodMonth: "2026-07",
+      total: 396,
+      orderCount: 26,
+      salesDayCount: 9,
+    });
+    expect(report.days).toEqual([
+      { date: "2026-07-07", amount: 126, orders: 8 },
+      { date: "2026-07-08", amount: 16, orders: 2 },
+      { date: "2026-07-09", amount: 68, orders: 4 },
+      { date: "2026-07-10", amount: 34, orders: 2 },
+      { date: "2026-07-13", amount: 34, orders: 3 },
+      { date: "2026-07-14", amount: 33, orders: 2 },
+      { date: "2026-07-15", amount: 34, orders: 2 },
+      { date: "2026-07-16", amount: 34, orders: 2 },
+      { date: "2026-07-17", amount: 17, orders: 1 },
+    ]);
+    const plan = createPrifotoCashImportPlanV2(emptyState(), report, "july.pdf");
+    expect(plan.importedCash).toBe(396);
+    expect(plan.entries.filter((entry) => (entry.cashChange || 0) > 0).map((entry) => [entry.date, entry.cashChange])).toEqual([
+      ["2026-07-07", 126],
+      ["2026-07-08", 16],
+      ["2026-07-09", 68],
+      ["2026-07-10", 34],
+      ["2026-07-13", 34],
+      ["2026-07-14", 33],
+      ["2026-07-15", 34],
+      ["2026-07-16", 34],
+      ["2026-07-17", 17],
+    ]);
   });
 
   it("accepts June daily totals and reports the non-booking product-chart discrepancy", () => {
