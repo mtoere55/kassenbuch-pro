@@ -65,7 +65,7 @@ export function parsePayPalMonthlyStatement(text: string): PayPalMonthlyStatemen
     throw new Error("Im PayPal-Kontoauszug wurden keine Einzeltransaktionen erkannt.");
   }
 
-  const transactionSum = roundMoney(transactions.reduce((sum, transaction) => sum + transaction.amount, 0));
+  const transactionSum = roundMoney(transactions.reduce((sum, transaction) => sum + (transaction.netAmount ?? transaction.amount), 0));
   const expectedMovement = roundMoney(receivedPayments + sentPayments + debits + credits + fees);
   assertClose(transactionSum, expectedMovement, "PayPal-Transaktionssumme");
   assertClose(roundMoney(openingBalance + transactionSum), closingBalance, "PayPal-Saldo");
