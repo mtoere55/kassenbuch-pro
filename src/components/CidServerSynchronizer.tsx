@@ -68,7 +68,7 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
           revision.current = saved.revision;
           lastSyncedCompact.current = compactStateString(localState);
           canonical = localState;
-          if (active && repaired !== stateRef.current) replaceState(localState);
+          if (active) replaceState(localState);
         } else {
           canonical = localState;
           revision.current = null;
