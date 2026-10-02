@@ -6,8 +6,8 @@ describe("monthly finance audit", () => {
   it("summarizes operating entries and keeps transfers out of profit", () => {
     const state = emptyState();
     state.ledger.push(
-      entry("income", 1190, "8400", "2026-07-01", { taxAmount: 190 }),
-      entry("expense", 595, "3400", "2026-07-02", { taxAmount: 95 }),
+      entry("income", 1190, "8400", "2026-07-01", { taxAmount: 190, netAmount: 1000 }),
+      entry("expense", 595, "3400", "2026-07-02", { taxAmount: 95, netAmount: 500 }),
       entry("transfer", 1000, "1360", "2026-07-03", { cashChange: -1000, description: "Kasse an Bank" }),
     );
 
