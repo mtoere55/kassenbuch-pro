@@ -34,6 +34,33 @@ describe("configured business bookkeeping rules", () => {
     });
   });
 
+  it("classifies Finanzamt, Consultax and Telefonica according to the shop rules", () => {
+    expect(resolveConfiguredBankRule("FINANZAMT HAGEN", -1488.37)).toMatchObject({
+      accountCode: "1780",
+      direction: "transfer",
+      internalTransfer: true,
+      documentRequired: false,
+    });
+    expect(resolveConfiguredBankRule("CONSULTAX Treuhand Steuerberatungsgesellschaft mbH", -585.48)).toMatchObject({
+      accountCode: "4955",
+      direction: "expense",
+      documentRequired: true,
+      recommendedTaxRate: 19,
+    });
+    expect(resolveConfiguredBankRule("Telefonica Germany G", 283.23)).toMatchObject({
+      accountCode: "8403",
+      direction: "income",
+      documentRequired: true,
+      recommendedTaxRate: 19,
+    });
+    expect(resolveConfiguredBankRule("Telefonica Germany Tarifrechnung", -79.99)).toMatchObject({
+      accountCode: "4920",
+      direction: "expense",
+      documentRequired: true,
+      recommendedTaxRate: 19,
+    });
+  });
+
   it("uses clearing accounts for UniTel, Prifoto, Flatpay and cash deposits", () => {
     expect(resolveConfiguredBankRule("UniTel Guthaben Aufladekarte", -1200)).toMatchObject({ accountCode: "1590", internalTransfer: true });
     expect(resolveConfiguredBankRule("Prifoto GmbH ReNr RE-010320263003", -301)).toMatchObject({ accountCode: "1592", internalTransfer: true });
