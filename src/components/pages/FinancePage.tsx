@@ -48,11 +48,42 @@ export function FinancePage() {
     setMessage("Steuer-Prognosewerte gespeichert.");
   }
 
-  return <div>
-    <PageHeader title="Finanzen & Steuerprognose" subtitle="Betriebsergebnis, Umsatzsteuer und vereinfachte Steuer-Hochrechnung aus allen Buchhaltungsquellen." actions={<Button onClick={saveTaxSettings}>Prognosewerte speichern</Button>} />
+  function saveAsPdf() {
+    const previousTitle = document.title;
+    const pdfTitle = `Finanzen-Steuerprognose-${year}-${state.settings.businessName || "Kassenbuch"}`
+      .replace(/[^a-zA-Z0-9äöüÄÖÜß_-]+/g, "-");
+    const restoreTitle = () => {
+      document.title = previousTitle;
+      window.removeEventListener("afterprint", restoreTitle);
+    };
+    document.title = pdfTitle;
+    window.addEventListener("afterprint", restoreTitle);
+    window.print();
+    window.setTimeout(restoreTitle, 1500);
+  }
+
+  return <div className="finance-print-root">
+    <PageHeader
+      title="Finanzen & Steuerprognose"
+      subtitle="Betriebsergebnis, Umsatzsteuer und vereinfachte Steuer-Hochrechnung aus allen Buchhaltungsquellen."
+      actions={<>
+        <Button variant="secondary" onClick={saveAsPdf}>PDF speichern / Drucken</Button>
+        <Button onClick={saveTaxSettings}>Prognosewerte speichern</Button>
+      </>}
+    />
+    <div className="finance-print-header">
+      <div>
+        <strong>{state.settings.businessName || "Kassenbuch Pro"}</strong>
+        <span>{[state.settings.street, [state.settings.postalCode, state.settings.city].filter(Boolean).join(" ")].filter(Boolean).join(" · ")}</span>
+      </div>
+      <div>
+        <h1>Finanzen & Steuerprognose {year}</h1>
+        <p>Erstellt am {new Intl.DateTimeFormat("de-DE").format(new Date())}</p>
+      </div>
+    </div>
     {message ? <div className="alert alert-success">{message}</div> : null}
 
-    <div className="form-grid two">
+    <div className="form-grid two finance-screen-controls">
       <Field label="Steuerjahr"><Select value={String(year)} onChange={(event) => setYear(Number(event.target.value))}>{years.map((item) => <option key={item} value={item}>{item}</option>)}</Select></Field>
       <Field label="Gewerbesteuer-Hebesatz (%)" hint="Hagen 2026: 520 %."><Input type="number" min="200" max="900" value={tradeTaxMultiplier} onChange={(event) => setTradeTaxMultiplier(event.target.value)} /></Field>
     </div>
@@ -116,7 +147,7 @@ export function FinancePage() {
       </Card>
     </div>
 
-    <Card>
+    <div className="finance-screen-controls"><Card>
       <div className="card-heading"><div><h2>Vorauszahlungen & Ergänzungen</h2><p>Bereits bezahlte Beträge und weitere steuerpflichtige Einkünfte.</p></div></div>
       <div className="form-grid two">
         <Field label="Weitere steuerpflichtige Einkünfte"><Input type="number" step="0.01" value={otherTaxableIncome} onChange={(event) => setOtherTaxableIncome(event.target.value)} /></Field>
@@ -124,7 +155,16 @@ export function FinancePage() {
         <Field label="ESt-Vorauszahlungen bereits gezahlt"><Input type="number" step="0.01" value={incomeTaxPrepayments} onChange={(event) => setIncomeTaxPrepayments(event.target.value)} /></Field>
         <Field label="Gewerbesteuer-Vorauszahlungen bereits gezahlt"><Input type="number" step="0.01" value={tradeTaxPrepayments} onChange={(event) => setTradeTaxPrepayments(event.target.value)} /></Field>
       </div>
-    </Card>
+    </Card></div>
+
+    <div className="finance-print-assumptions">
+      <strong>Grundlagen der Prognose</strong>
+      <span>Gewerbesteuer-Hebesatz: {number(tradeTaxMultiplier, 520).toFixed(0)} %</span>
+      <span>Weitere steuerpflichtige Einkünfte: {formatCurrency(number(otherTaxableIncome))}</span>
+      <span>USt-Vorauszahlungen: {formatCurrency(number(vatPrepayments))}</span>
+      <span>ESt-Vorauszahlungen: {formatCurrency(number(incomeTaxPrepayments))}</span>
+      <span>GewSt-Vorauszahlungen: {formatCurrency(number(tradeTaxPrepayments))}</span>
+    </div>
 
     <Card>
       <div className="card-heading"><div><h2>Datenqualität</h2><p>Wie belastbar die Prognose aus den vorhandenen Buchungen ist.</p></div><Badge tone={confidenceTone}>{forecast.quality.score} %</Badge></div>
@@ -137,12 +177,16 @@ export function FinancePage() {
       {forecast.quality.score < 90 ? <div className="alert alert-warning">Offene Zuordnungen oder fehlende Belege machen die Prognose unsicherer. Fehlende Vorsteuer führt typischerweise zu einer eher zu hohen USt-Zahllast.</div> : <div className="alert alert-success">Die vorhandenen Buchungen sind weitgehend abgeglichen.</div>}
     </Card>
 
-    <Card>
+    <Card className="finance-monthly-card">
       <div className="card-heading"><div><h2>Monatsübersicht {year}</h2><p>Erlöse, Ausgaben, Gewinn und Umsatzsteuer je Monat.</p></div></div>
       <div className="table-wrap"><table className="data-table"><thead><tr><th>Monat</th><th className="align-right">Erlöse netto</th><th className="align-right">Ausgaben netto</th><th className="align-right">Gewinn</th><th className="align-right">USt</th><th className="align-right">Vorsteuer</th><th className="align-right">Zahllast</th><th className="align-right">Buchungen</th></tr></thead><tbody>
         {forecast.months.map((month, index) => <tr key={month.month}><td><strong>{MONTHS[index]}</strong><small>{month.month}</small></td><td className="align-right">{formatCurrency(month.revenueNet)}</td><td className="align-right">{formatCurrency(month.expenseNet)}</td><td className={"align-right " + (month.profit >= 0 ? "money-positive" : "money-negative")}><strong>{formatCurrency(month.profit)}</strong></td><td className="align-right">{formatCurrency(month.outputVat)}</td><td className="align-right">{formatCurrency(month.inputVat)}</td><td className="align-right">{formatCurrency(month.vatLiability)}</td><td className="align-right">{month.bookingCount}</td></tr>)}
       </tbody></table></div>
     </Card>
+
+    <div className="finance-print-footer">
+      <p><strong>Hinweis:</strong> Diese Auswertung ist eine betriebliche Prognose auf Basis der im Kassenbuch gespeicherten Daten und ersetzt weder Steuererklärung noch Steuerbescheid oder steuerliche Beratung.</p>
+    </div>
   </div>;
 }
 
