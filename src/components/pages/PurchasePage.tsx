@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getImeiValidationMessage, normalizeImei, todayIso } from "@/lib/accounting";
+import { downloadBusinessDocumentPdf } from "@/lib/direct-pdf";
 import { useKassenStore } from "@/lib/store";
 import type { Device, PaymentMethod, TaxMode } from "@/lib/types";
 import { CustomerModal } from "../CustomerModal";
@@ -152,7 +153,7 @@ export function PurchasePage() {
         onClose={() => setDocumentId(undefined)}
         title="Ankauf erfolgreich gespeichert"
         wide
-        footer={<><Button variant="secondary" onClick={() => setDocumentId(undefined)}>Schließen</Button><Button onClick={printDocumentView}>Ankaufvertrag drucken</Button></>}
+        footer={<><Button variant="secondary" onClick={() => setDocumentId(undefined)}>Schließen</Button>{document ? <Button variant="secondary" onClick={() => void downloadBusinessDocumentPdf(state, document)}>PDF speichern</Button> : null}<Button onClick={printDocumentView}>Ankaufvertrag drucken</Button></>}
       >
         {document ? <DocumentView document={document} /> : null}
       </Modal>
