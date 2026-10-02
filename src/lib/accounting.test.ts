@@ -3,6 +3,7 @@ import {
   calculateDifferentialTax,
   calculateSaleMetrics,
   getTaxAmountFromGross,
+  inventoryAgeDays,
   isValidImei,
   nextSequence,
 } from "./accounting";
@@ -36,6 +37,12 @@ describe("accounting core", () => {
     expect(isValidImei("490154203237518")).toBe(true);
     expect(isValidImei("490154203237519")).toBe(false);
     expect(isValidImei("123")).toBe(false);
+  });
+
+  it("calculates inventory age from the purchase date", () => {
+    expect(inventoryAgeDays("2026-09-18", "2026-10-02")).toBe(14);
+    expect(inventoryAgeDays("2026-10-02", "2026-10-02")).toBe(0);
+    expect(inventoryAgeDays("2026-10-03", "2026-10-02")).toBe(0);
   });
 
   it("creates the next year-based document number", () => {
