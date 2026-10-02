@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getTaxAmountFromGross, makeId, nextSequence, todayIso } from "@/lib/accounting";
 import { importBankStatement, type BankStatementReport } from "@/lib/bank-statement";
-import { findSupplierInvoiceDuplicate, getSupplierAccount, inferSupplierAccount, supplierInvoiceDuplicateKey } from "@/lib/document-control";
+import { findSupplierInvoiceDuplicate, getSupplierAccount, inferSupplierAccount, isLikelyBankStatementText, supplierInvoiceDuplicateKey } from "@/lib/document-control";
 import { detectDocumentType, parseSupplierInvoice, parseZReport, type ParsedInvoice, type ParsedZReport } from "@/lib/document-parser";
 import { createArchiveImageDataUrl, prepareImageForOcr } from "@/lib/image-ocr";
 import { validateSupplierInvoiceAmounts } from "@/lib/invoice-validation";
@@ -111,6 +111,9 @@ export function useScannerController() {
         if (bankReport) {
           setUniversalMode("bankStatement"); setBankStatement(bankReport); setPrifotoReport(undefined); setPaypalReport(undefined); setTransactions([]); setParsed(undefined);
           setMessage(`Kontoauszug ${bankReport.statementNumber} erkannt: ${bankReport.transactions.length} Bewegung(en) vom ${bankReport.periodStart} bis ${bankReport.periodEnd}. Anfangs- und Endbestand wurden rechnerisch geprüft.`);
+        } else if (isLikelyBankStatementText(text)) {
+          setUniversalMode("document"); setBankStatement(undefined); setPrifotoReport(undefined); setPaypalReport(undefined); setTransactions([]); setParsed(undefined);
+          throw new Error("Kontoauszug erkannt. Dieses Dokument wird aus Sicherheitsgründen nicht als Eingangsrechnung oder Betriebsausgabe gebucht. Bitte den Kontoauszug über Bank & PayPal bzw. als unterstützten Bank-PDF/CSV importieren.");
         } else if (kind === "text") {
           const transactionGuess = parseUniversalTransactions(text);
           if (transactionGuess.transactions.length) { setUniversalMode(transactionGuess.mode); setPrifotoReport(undefined); setPaypalReport(undefined); setTransactions(transactionGuess.transactions); setParsed(undefined); const summary = summarizeImportedTransactions(transactionGuess.transactions); setMessage(`${summary.total} Kontobewegung(en) erkannt. Mit „Geprüfte Daten übernehmen“ werden sie importiert und danach geprüft.`); }
@@ -129,6 +132,9 @@ export function useScannerController() {
   async function originalFileDataUrl() { if (!file) return undefined; if (file.type.startsWith("image/")) return createArchiveImageDataUrl(file); if (file.size > MAX_INLINE_ARCHIVE_BYTES) return undefined; return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); }); }
 
   async function saveSupplierInvoice(invoice: ParsedInvoice, dataUrl?: string) {
+    if (isLikelyBankStatementText(ocrText)) {
+      throw new Error("Speichern blockiert: Der erkannte Text sieht nach einem Kontoauszug aus und darf nicht als Eingangsrechnung oder Vorsteuer-Beleg gebucht werden.");
+    }
     const date = invoice.date || todayIso(); const vendor = invoice.vendor?.trim() || "Unbekannter Lieferant"; const gross = invoice.gross || 0; const taxCandidate = invoice.vat ?? getTaxAmountFromGross(gross); const amounts = validateSupplierInvoiceAmounts(gross, taxCandidate);
     const duplicate = findSupplierInvoiceDuplicate(state.documents, { vendor, date, gross: amounts.gross, invoiceNumber: invoice.invoiceNumber, fileName: file?.name }); if (duplicate) throw new Error(`Diese Rechnung ist bereits als ${duplicate.documentNumber} gespeichert. Bitte die vorhandene Rechnung öffnen oder zuerst löschen.`);
     const createdAt = new Date().toISOString(); const documentId = makeId("document"); const documentNumber = invoice.invoiceNumber?.trim() || nextSequence("ER", state.documents.map((document) => document.documentNumber), new Date(`${date}T12:00:00`)); const account = getSupplierAccount(accountCode); const duplicateKey = supplierInvoiceDuplicateKey({ vendor, date, gross: amounts.gross, invoiceNumber: invoice.invoiceNumber, fileName: file?.name });
