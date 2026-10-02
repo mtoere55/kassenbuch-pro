@@ -124,6 +124,7 @@ export function LedgerEntryEditModal({ entry, onClose, onSaved }: Props) {
   function printCard() { printHtmlElement(printRef.current, "Buchung"); }
 
   async function savePdf() {
+    if (!entry) return;
     try {
       await downloadBookingPdf(state, {
         date: draft.date,
