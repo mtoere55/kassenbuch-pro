@@ -119,6 +119,20 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
   }, [cid, hydrated, replaceState]);
 
   useEffect(() => {
+    if (phase !== "local-only") return;
+    const timer = window.setInterval(() => {
+      void fetchRemoteState()
+        .then((remote) => {
+          if (remote.exists) window.location.reload();
+        })
+        .catch(() => {
+          // Keep the local browser usable while the server is unavailable.
+        });
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [phase]);
+
+  useEffect(() => {
     if (!hydrated || !ready.current || blocked.current) return;
     const compact = compactStateString(state);
     if (compact === lastSyncedCompact.current) return;
