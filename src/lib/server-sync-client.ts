@@ -40,6 +40,36 @@ export interface LocalServerSyncMarker {
   syncedAt: string;
 }
 
+export type InitialServerSyncDecision = "push-local" | "use-remote" | "conflict";
+
+export function decideInitialServerSync(input: {
+  marker?: LocalServerSyncMarker;
+  browserFingerprint: string;
+  localFingerprint: string;
+  remoteFingerprint: string;
+  remoteRevision: number;
+  localHasData: boolean;
+}): InitialServerSyncDecision {
+  const { marker } = input;
+
+  if (marker) {
+    if (marker.revision > input.remoteRevision) return "conflict";
+
+    const hasUnsyncedLocalChanges = marker.fingerprint !== input.browserFingerprint;
+    if (marker.revision < input.remoteRevision) {
+      return hasUnsyncedLocalChanges ? "conflict" : "use-remote";
+    }
+
+    return hasUnsyncedLocalChanges ? "push-local" : "use-remote";
+  }
+
+  if (input.localHasData && input.localFingerprint !== input.remoteFingerprint) {
+    return "conflict";
+  }
+
+  return "use-remote";
+}
+
 const SERVER_SYNC_MARKER_PREFIX = "kassenbuch-pro-server-sync-v1:";
 
 export function readLocalServerSyncMarker(cid: string): LocalServerSyncMarker | undefined {
