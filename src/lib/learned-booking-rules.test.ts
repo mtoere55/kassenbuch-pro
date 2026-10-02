@@ -72,6 +72,57 @@ describe("learned bank booking rules", () => {
     });
   });
 
+  it("repairs unresolved historical PayPal expenses while keeping document review open", () => {
+    const state = makeState();
+    state.ledger = [{
+      id: "paypal-legacy",
+      date: "2026-08-29",
+      direction: "expense",
+      amount: 667.98,
+      paymentMethod: "paypal",
+      description: "PayPal-Ausgabe",
+      category: "0000 · Nicht zugeordnet",
+      source: "paypalImport",
+      sourceId: "paypal:legacy-1",
+      taxAmount: 0,
+      taxRate: 0,
+      taxMode: "taxFree",
+      reconciled: false,
+      accountCode: "0000",
+      counterAccountCode: "1370",
+      cashChange: 0,
+      netAmount: 667.98,
+      createdAt: "2026-08-29T12:00:00.000Z",
+    }];
+    state.importedTransactions = [{
+      id: "legacy-1",
+      accountType: "paypal",
+      date: "2026-08-29",
+      amount: -667.98,
+      description: "PayPal Express-Zahlung",
+      transactionType: "payment",
+      matchedLedgerEntryId: "paypal-legacy",
+      suggestedAccountCode: "0000",
+      bookkeepingStatus: "booked",
+      matchConfidence: 0,
+      status: "needsReview",
+      createdAt: "2026-08-29T12:00:00.000Z",
+    }];
+
+    const result = applyBookkeepingRulesSafely(state);
+    expect(result.ledger[0]).toMatchObject({
+      accountCode: "3400",
+      taxRate: 0,
+      taxAmount: 0,
+      reconciled: false,
+    });
+    expect(result.importedTransactions[0]).toMatchObject({
+      suggestedAccountCode: "3400",
+      status: "needsReview",
+      bookkeepingStatus: "booked",
+    });
+  });
+
   it("applies learned private rules without creating an expense", () => {
     const state = makeState();
     state.ledger = [bankLedger("ledger-private", "Familienzahlung", -500)];
