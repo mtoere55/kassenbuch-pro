@@ -50,6 +50,41 @@ describe("finance tax forecast", () => {
     expect(result.inputVat).toBe(19.43);
   });
 
+  it("excludes a scanned bank statement that was misclassified as a supplier invoice", () => {
+    const state = emptyState();
+    state.documents.push({
+      id: "doc-bank-statement",
+      documentNumber: "ER-2026-9999",
+      type: "supplierInvoice",
+      date: "2026-07-16",
+      amount: 20_426,
+      taxAmount: 3261.29,
+      taxMode: "standard19",
+      paymentMethod: "bank",
+      status: "paid",
+      ocrText: "Kontoauszug für 01 April 2026 bis 29 Mai 2026 IBAN DE123 Buchungstag Wertstellung Neuer Kontostand",
+      createdAt: "2026-07-16T12:00:00.000Z",
+    });
+    state.ledger.push(
+      entry("income", 1190, 190, "8400", "2026-07-10"),
+      entry("expense", 595, 95, "3400", "2026-07-11"),
+      {
+        ...entry("expense", 20_426, 3261.29, "3400", "2026-07-16"),
+        source: "scan",
+        documentId: "doc-bank-statement",
+        sourceId: "doc-bank-statement",
+        description: "Eingangsrechnung Kontoauszug für 01 April 2026 bis 29 Mai 2026",
+        netAmount: 17_164.71,
+      },
+    );
+
+    const result = buildFinanceForecast(state, 2026, new Date("2026-10-01T12:00:00Z"));
+    expect(result.revenueNet).toBe(1000);
+    expect(result.expenseNet).toBe(500);
+    expect(result.profit).toBe(500);
+    expect(result.inputVat).toBe(95);
+  });
+
   it("counts PayPal supplier payments without invoice as missing-receipt quality issues", () => {
     const state = emptyState();
     state.ledger.push({
