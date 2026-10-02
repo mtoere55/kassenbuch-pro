@@ -1,20 +1,27 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { calculateSaleMetrics, formatCurrency, todayIso } from "@/lib/accounting";
+import { calculateSaleMetrics, formatCurrency, formatDate, inventoryAgeDays, todayIso } from "@/lib/accounting";
 import { useKassenStore } from "@/lib/store";
 import type { PaymentMethod } from "@/lib/types";
 import { CustomerModal } from "../CustomerModal";
 import { DocumentView, printDocumentView } from "../DocumentView";
 import { Badge, Button, Card, Field, Input, Modal, PageHeader, Select } from "../ui";
 
-export function SalePage() {
+export function SalePage({ initialDeviceId }: { initialDeviceId?: string }) {
   const { state, addSale } = useKassenStore();
-  const available = state.devices.filter((device) => device.status === "inStock" || device.status === "reserved");
-  const [deviceId, setDeviceId] = useState(available[0]?.id ?? "");
+  const available = useMemo(
+    () =>
+      state.devices
+        .filter((device) => device.status === "inStock" || device.status === "reserved")
+        .sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate)),
+    [state.devices],
+  );
+  const initialDevice = available.find((item) => item.id === initialDeviceId) ?? available[0];
+  const [deviceId, setDeviceId] = useState(initialDevice?.id ?? "");
   const [customerId, setCustomerId] = useState("");
   const [date, setDate] = useState(todayIso());
-  const [price, setPrice] = useState(String(available[0]?.askingPrice ?? available[0]?.purchasePrice ?? ""));
+  const [price, setPrice] = useState(String(initialDevice?.askingPrice ?? initialDevice?.purchasePrice ?? ""));
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [documentType, setDocumentType] = useState<"invoice" | "receipt">("invoice");
   const [customerModal, setCustomerModal] = useState(false);
@@ -83,14 +90,16 @@ export function SalePage() {
                 <Select value={deviceId} onChange={(event) => chooseDevice(event.target.value)}>
                   <option value="">Gerät auswählen</option>
                   {available.map((item) => (
-                    <option key={item.id} value={item.id}>{item.stockNumber} · {item.brand} {item.model} · IMEI {item.imei1}</option>
+                    <option key={item.id} value={item.id}>
+                      {item.stockNumber} · {item.brand} {item.model} · Ankauf {formatDate(item.purchaseDate)} · IMEI {item.imei1}
+                    </option>
                   ))}
                 </Select>
               </Field>
               {device ? (
                 <div className="device-summary">
                   <div><strong>{device.brand} {device.model}</strong><span>{device.stockNumber}</span></div>
-                  <div className="summary-tags"><Badge tone="info">IMEI {device.imei1}</Badge><Badge>{device.condition}</Badge><Badge tone={device.taxMode === "differential" ? "warning" : "info"}>{device.taxMode === "differential" ? "§25a" : "19 % MwSt."}</Badge></div>
+                  <div className="summary-tags"><Badge tone="info">IMEI {device.imei1}</Badge><Badge>{device.condition}</Badge><Badge tone={device.taxMode === "differential" ? "warning" : "info"}>{device.taxMode === "differential" ? "§25a" : "19 % MwSt."}</Badge><Badge tone="info">Ankauf {formatDate(device.purchaseDate)}</Badge><Badge tone={inventoryAgeDays(device.purchaseDate) >= 60 ? "warning" : "neutral"}>{inventoryAgeDays(device.purchaseDate)} Tage im Lager</Badge></div>
                   <dl><div><dt>Einkauf</dt><dd>{formatCurrency(device.purchasePrice)}</dd></div><div><dt>Reparatur</dt><dd>{formatCurrency(device.repairCosts)}</dd></div><div><dt>Preisvorschlag</dt><dd>{formatCurrency(device.askingPrice ?? 0)}</dd></div></dl>
                 </div>
               ) : null}
