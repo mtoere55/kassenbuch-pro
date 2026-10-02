@@ -4,7 +4,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import { activateCidStorageScope } from "@/lib/browser-persistence";
 import { ensureCidScopedBootstrap } from "@/lib/cid-scoped-bootstrap";
 import { repairLeakedCidState } from "@/lib/cid-storage-repair";
-import type { CidentiaStoragePolicy } from "@/lib/cidentia-storage-policy";
 import {
   CID_SESSION_KEY,
   isVerifiedCidentiaSession,
@@ -19,7 +18,6 @@ type ApiPayload = {
   error?: string;
   message?: string;
   session?: CidentiaSession;
-  storagePolicy?: CidentiaStoragePolicy;
 };
 
 export function CidGateway({ children }: { children: (session: CidentiaSession, logout: () => void) => ReactNode }) {
@@ -51,14 +49,8 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
         if (!response.ok) return;
         const payload = (await response.json()) as ApiPayload;
         if (!cancelled && payload.session && isVerifiedCidentiaSession(payload.session)) {
-          activateCidStorageScope(
-            payload.session.cid,
-            payload.storagePolicy?.legacyOwnerCid,
-          );
-          await repairLeakedCidState(
-            payload.session.cid,
-            payload.storagePolicy?.legacyOwnerCid,
-          );
+          activateCidStorageScope(payload.session.cid);
+          await repairLeakedCidState(payload.session.cid);
           ensureCidScopedBootstrap(payload.session.cid);
           if (!cancelled) setSession(payload.session);
         }
@@ -117,14 +109,8 @@ export function CidGateway({ children }: { children: (session: CidentiaSession, 
       if (!response.ok || !payload.session || !isVerifiedCidentiaSession(payload.session)) {
         throw new Error(payload.error || "Cidentia Anmeldung ist fehlgeschlagen.");
       }
-      activateCidStorageScope(
-        payload.session.cid,
-        payload.storagePolicy?.legacyOwnerCid,
-      );
-      await repairLeakedCidState(
-        payload.session.cid,
-        payload.storagePolicy?.legacyOwnerCid,
-      );
+      activateCidStorageScope(payload.session.cid);
+      await repairLeakedCidState(payload.session.cid);
       ensureCidScopedBootstrap(payload.session.cid);
       setSession(payload.session);
       setMessage("");
