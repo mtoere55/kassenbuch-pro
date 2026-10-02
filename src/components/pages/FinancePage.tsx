@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/accounting";
 import { buildFinanceForecast } from "@/lib/finance-tax";
+import { applyBookkeepingRulesSafely } from "@/lib/learned-booking-rules";
 import { buildMonthlyAudits, type MonthlyAudit, type MonthlyAuditStatus } from "@/lib/monthly-audit";
 import { useKassenStore } from "@/lib/store";
 import { Badge, Button, Card, Field, Input, Modal, PageHeader, Select, StatCard } from "../ui";
@@ -10,7 +11,7 @@ import { Badge, Button, Card, Field, Input, Modal, PageHeader, Select, StatCard 
 const MONTHS = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 
 export function FinancePage() {
-  const { state, updateSettings } = useKassenStore();
+  const { state, replaceState, updateSettings } = useKassenStore();
   const years = useMemo(() => {
     const values = new Set<number>([new Date().getFullYear()]);
     state.ledger.forEach((entry) => {
@@ -28,6 +29,11 @@ export function FinancePage() {
   const [tradeTaxPrepayments, setTradeTaxPrepayments] = useState(String(state.settings.tradeTaxPrepayments ?? 0));
   const [message, setMessage] = useState("");
   const [auditMonth, setAuditMonth] = useState<string>();
+
+  useEffect(() => {
+    const normalized = applyBookkeepingRulesSafely(state);
+    if (normalized !== state) replaceState(normalized);
+  }, [replaceState, state]);
 
   const previewState = useMemo(() => ({
     ...state,
