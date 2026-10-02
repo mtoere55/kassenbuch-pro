@@ -136,17 +136,24 @@ export function compactStateString(state: AppState): string {
 }
 
 export function isMeaningfulState(state: AppState): boolean {
-  return Boolean(
-    state.customers.length ||
-    state.devices.length ||
-    state.purchases.length ||
-    state.sales.length ||
-    state.documents.length ||
-    state.ledger.length ||
-    state.importedTransactions.length ||
-    state.settings.businessName.trim() !== "Mein Betrieb" ||
-    state.settings.ownerName.trim(),
+  const businessName = state.settings.businessName.trim();
+  const ownerName = state.settings.ownerName.trim();
+  const hasConfiguredBusiness = Boolean(
+    ownerName ||
+    (businessName && businessName !== "Mein Betrieb"),
   );
+  const coreRows =
+    state.customers.length +
+    state.devices.length +
+    state.purchases.length +
+    state.sales.length +
+    state.ledger.length +
+    state.importedTransactions.length;
+
+  // Initial server seeding is deliberately conservative. A default browser can
+  // contain one stray/generated document, but it must never become the
+  // authoritative CID dataset merely because of that artifact.
+  return hasConfiguredBusiness || coreRows >= 3;
 }
 
 export async function syncAttachmentsWithServer(
