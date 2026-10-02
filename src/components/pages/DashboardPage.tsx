@@ -1,12 +1,12 @@
 "use client";
 
-import { formatCurrency, formatDate, todayIso } from "@/lib/accounting";
+import { formatCurrency, formatDate, inventoryAgeDays, todayIso } from "@/lib/accounting";
 import { useKassenStore } from "@/lib/store";
 import type { PageKey } from "@/lib/types";
 import { Icon } from "../Icon";
 import { Badge, Button, Card, PageHeader, StatCard } from "../ui";
 
-export function DashboardPage({ onNavigate }: { onNavigate: (page: PageKey) => void }) {
+export function DashboardPage({ onNavigate, onSellDevice }: { onNavigate: (page: PageKey) => void; onSellDevice: (deviceId: string) => void }) {
   const { state } = useKassenStore();
   const today = todayIso();
   const todayEntries = state.ledger.filter((entry) => entry.date === today);
@@ -25,7 +25,9 @@ export function DashboardPage({ onNavigate }: { onNavigate: (page: PageKey) => v
   const paypal = todayEntries
     .filter((entry) => entry.direction === "income" && entry.paymentMethod === "paypal")
     .reduce((sum, entry) => sum + entry.amount, 0);
-  const inStock = state.devices.filter((device) => device.status === "inStock");
+  const inStock = state.devices
+    .filter((device) => device.status === "inStock")
+    .sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate));
   const reviewTransactions = state.importedTransactions.filter(
     (item) => item.status === "needsReview" || item.status === "new",
   );
@@ -56,6 +58,44 @@ export function DashboardPage({ onNavigate }: { onNavigate: (page: PageKey) => v
         <StatCard label="Ergebnis heute" value={formatCurrency(income - expenses)} detail="Vor weiteren Kosten" tone="blue" />
         <StatCard label="Geräte auf Lager" value={String(inStock.length)} detail={formatCurrency(inStock.reduce((sum, item) => sum + item.purchasePrice, 0)) + " Einkaufswert"} />
       </div>
+
+      <Card>
+        <div className="card-heading">
+          <div>
+            <h2>Geräte auf Lager</h2>
+            <p>Ankaufdatum und Lagerdauer auf einen Blick · älteste Geräte zuerst.</p>
+          </div>
+          <Button variant="secondary" onClick={() => onNavigate("devices")}>Alle Geräte</Button>
+        </div>
+        {inStock.length === 0 ? (
+          <div className="task-success"><Icon name="check" width={20} height={20} /><span>Aktuell sind keine Geräte auf Lager.</span></div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr><th>Gerät</th><th>Ankaufdatum</th><th>Lagerdauer</th><th>Einkauf</th><th /></tr>
+              </thead>
+              <tbody>
+                {inStock.slice(0, 8).map((device) => {
+                  const age = inventoryAgeDays(device.purchaseDate, today);
+                  return (
+                    <tr key={device.id}>
+                      <td><strong>{device.brand} {device.model}</strong><small>{device.stockNumber} · IMEI {device.imei1}</small></td>
+                      <td><strong>{formatDate(device.purchaseDate)}</strong></td>
+                      <td><Badge tone={age >= 60 ? "warning" : "neutral"}>{age === 0 ? "Heute" : `${age} Tage`}</Badge></td>
+                      <td><strong>{formatCurrency(device.purchasePrice)}</strong><small>VK {formatCurrency(device.askingPrice ?? 0)}</small></td>
+                      <td className="align-right"><Button onClick={() => onSellDevice(device.id)}>Verkaufen</Button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {inStock.length > 8 ? <p className="muted">Weitere {inStock.length - 8} Geräte findest du unter „Geräte“.</p> : null}
+          </div>
+        )}
+      </Card>
+
+      <div style={{ height: 18 }} />
 
       <div className="dashboard-columns">
         <Card>
