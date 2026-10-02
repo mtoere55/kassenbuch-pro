@@ -63,6 +63,19 @@ describe("CID server storage", () => {
     expect(current?.state.settings.businessName).toBe("B");
   });
 
+  it("serializes simultaneous writes so only one browser can advance the same revision", async () => {
+    await writeServerState("CID-26-00007", stateWithBusiness("BASE"), null);
+    const results = await Promise.allSettled([
+      writeServerState("CID-26-00007", stateWithBusiness("CHROME"), 1),
+      writeServerState("CID-26-00007", stateWithBusiness("FIREFOX"), 1),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const current = await readServerState("CID-26-00007");
+    expect(current?.revision).toBe(2);
+    expect(["CHROME", "FIREFOX"]).toContain(current?.state.settings.businessName);
+  });
+
   it("reassembles attachment chunks and validates the checksum", async () => {
     const cid = "CID-26-00007";
     const key = "cid:CID-26-00007:document:doc-1:data";
