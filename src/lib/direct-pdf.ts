@@ -110,7 +110,7 @@ function drawBookingPdf(ctx: CanvasRenderingContext2D, state: AppState, data: Bo
 
   if (data.note) {
     y += 20;
-    y = noteBox(ctx, y, "Notiz", data.note);
+    noteBox(ctx, y, "Notiz", data.note);
   }
 
   drawFooter(ctx, settings.businessName, settings.email, settings.iban, "Automatisch erzeugter Buchungsbeleg aus Kassenbuch Pro.");
