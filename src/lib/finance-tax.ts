@@ -56,7 +56,7 @@ export interface FinanceForecast {
 
 export function buildFinanceForecast(state: AppState, year: number, now = new Date()): FinanceForecast {
   const settings = state.settings;
-  const entries = state.ledger.filter((entry) => entry.date.startsWith(`${year}-`) && isOperatingEntry(entry));
+  const entries = state.ledger.filter((entry) => entry.date.startsWith(`${year}-`) && isOperatingFinanceEntry(entry));
   const months = Array.from({ length: 12 }, (_, index) => buildMonth(entries, year, index + 1));
   const activeMonths = months.filter((month) => month.bookingCount > 0).length;
   const totals = months.reduce(
@@ -161,8 +161,8 @@ function buildMonth(entries: LedgerEntry[], year: number, monthNumber: number): 
   const expenses = monthly.filter((entry) => entry.direction === "expense");
   const revenueGross = sum(income, (entry) => entry.amount);
   const expenseGross = sum(expenses, (entry) => entry.amount);
-  const revenueNet = sum(income, netValue);
-  const expenseNet = sum(expenses, netValue);
+  const revenueNet = sum(income, financeNetValue);
+  const expenseNet = sum(expenses, financeNetValue);
   const outputVat = sum(income, (entry) => entry.taxAmount || 0);
   const inputVat = sum(expenses, (entry) => entry.taxAmount || 0);
   return {
@@ -181,7 +181,7 @@ function buildMonth(entries: LedgerEntry[], year: number, monthNumber: number): 
 
 const NEUTRAL_ACCOUNT_CODES = new Set(["1000", "1200", "1360", "1370", "1590", "1591", "1592", "1800", "1890"]);
 
-function isOperatingEntry(entry: LedgerEntry): boolean {
+export function isOperatingFinanceEntry(entry: LedgerEntry): boolean {
   if (entry.direction === "transfer") return false;
   if (entry.manualKind === "transfer" || entry.manualKind === "private") return false;
   if (entry.accountCode && NEUTRAL_ACCOUNT_CODES.has(entry.accountCode)) return false;
@@ -197,7 +197,7 @@ function isTaxPayment(entry: LedgerEntry): boolean {
     /(umsatzsteuer|ust\b|einkommensteuer|est\b|gewerbesteuer|vorauszahlung)/.test(text);
 }
 
-function netValue(entry: LedgerEntry): number {
+export function financeNetValue(entry: LedgerEntry): number {
   if (typeof entry.netAmount === "number" && Number.isFinite(entry.netAmount)) return entry.netAmount;
   return roundMoney(entry.amount - Math.max(0, entry.taxAmount || 0));
 }
