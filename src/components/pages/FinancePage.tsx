@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/accounting";
 import { buildFinanceForecast } from "@/lib/finance-tax";
+import { buildMonthlyAudits, type MonthlyAudit, type MonthlyAuditStatus } from "@/lib/monthly-audit";
 import { useKassenStore } from "@/lib/store";
-import { Badge, Button, Card, Field, Input, PageHeader, Select, StatCard } from "../ui";
+import { Badge, Button, Card, Field, Input, Modal, PageHeader, Select, StatCard } from "../ui";
 
 const MONTHS = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 
@@ -26,6 +27,7 @@ export function FinancePage() {
   const [incomeTaxPrepayments, setIncomeTaxPrepayments] = useState(String(state.settings.incomeTaxPrepayments ?? 0));
   const [tradeTaxPrepayments, setTradeTaxPrepayments] = useState(String(state.settings.tradeTaxPrepayments ?? 0));
   const [message, setMessage] = useState("");
+  const [auditMonth, setAuditMonth] = useState<string>();
 
   const previewState = useMemo(() => ({
     ...state,
@@ -40,6 +42,8 @@ export function FinancePage() {
   }), [state, tradeTaxMultiplier, otherTaxableIncome, vatPrepayments, incomeTaxPrepayments, tradeTaxPrepayments]);
 
   const forecast = useMemo(() => buildFinanceForecast(previewState, year), [previewState, year]);
+  const monthlyAudits = useMemo(() => buildMonthlyAudits(state, year), [state, year]);
+  const selectedAudit = monthlyAudits.find((audit) => audit.month === auditMonth);
   const financeOfficeOpen = forecast.remainingVat + forecast.remainingIncomeTax;
   const confidenceTone = forecast.quality.score >= 90 ? "success" : forecast.quality.score >= 70 ? "warning" : "danger";
 
@@ -178,16 +182,144 @@ export function FinancePage() {
     </Card>
 
     <Card className="finance-monthly-card">
-      <div className="card-heading"><div><h2>Monatsübersicht {year}</h2><p>Erlöse, Ausgaben, Gewinn und Umsatzsteuer je Monat.</p></div></div>
-      <div className="table-wrap"><table className="data-table"><thead><tr><th>Monat</th><th className="align-right">Erlöse netto</th><th className="align-right">Ausgaben netto</th><th className="align-right">Gewinn</th><th className="align-right">USt</th><th className="align-right">Vorsteuer</th><th className="align-right">Zahllast</th><th className="align-right">Buchungen</th></tr></thead><tbody>
-        {forecast.months.map((month, index) => <tr key={month.month}><td><strong>{MONTHS[index]}</strong><small>{month.month}</small></td><td className="align-right">{formatCurrency(month.revenueNet)}</td><td className="align-right">{formatCurrency(month.expenseNet)}</td><td className={"align-right " + (month.profit >= 0 ? "money-positive" : "money-negative")}><strong>{formatCurrency(month.profit)}</strong></td><td className="align-right">{formatCurrency(month.outputVat)}</td><td className="align-right">{formatCurrency(month.inputVat)}</td><td className="align-right">{formatCurrency(month.vatLiability)}</td><td className="align-right">{month.bookingCount}</td></tr>)}
+      <div className="card-heading"><div><h2>Monatsübersicht {year}</h2><p>Erlöse, Ausgaben, Gewinn, Umsatzsteuer und automatische Kontrollhinweise je Monat.</p></div></div>
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>Monat</th><th className="align-right">Erlöse netto</th><th className="align-right">Ausgaben netto</th><th className="align-right">Gewinn</th><th className="align-right">USt</th><th className="align-right">Vorsteuer</th><th className="align-right">Zahllast</th><th className="align-right">Buchungen</th><th>Kontrolle</th></tr></thead><tbody>
+        {forecast.months.map((month, index) => {
+          const audit = monthlyAudits[index];
+          return <tr key={month.month}>
+            <td><strong>{MONTHS[index]}</strong><small>{month.month}</small></td>
+            <td className="align-right">{formatCurrency(month.revenueNet)}</td>
+            <td className="align-right">{formatCurrency(month.expenseNet)}</td>
+            <td className={"align-right " + (month.profit >= 0 ? "money-positive" : "money-negative")}><strong>{formatCurrency(month.profit)}</strong></td>
+            <td className="align-right">{formatCurrency(month.outputVat)}</td>
+            <td className="align-right">{formatCurrency(month.inputVat)}</td>
+            <td className="align-right">{formatCurrency(month.vatLiability)}</td>
+            <td className="align-right">{month.bookingCount}</td>
+            <td>
+              <div className="monthly-audit-action">
+                <Badge tone={auditTone(audit.status)}>{auditLabel(audit)}</Badge>
+                <Button variant="secondary" onClick={() => setAuditMonth(audit.month)} disabled={audit.status === "empty"}>Analyse</Button>
+              </div>
+            </td>
+          </tr>;
+        })}
       </tbody></table></div>
     </Card>
 
     <div className="finance-print-footer">
       <p><strong>Hinweis:</strong> Diese Auswertung ist eine betriebliche Prognose auf Basis der im Kassenbuch gespeicherten Daten und ersetzt weder Steuererklärung noch Steuerbescheid oder steuerliche Beratung.</p>
     </div>
+
+    <Modal
+      open={Boolean(selectedAudit)}
+      onClose={() => setAuditMonth(undefined)}
+      title={selectedAudit ? `Monatsanalyse · ${monthLabel(selectedAudit.month)}` : "Monatsanalyse"}
+      wide
+      footer={<Button variant="secondary" onClick={() => setAuditMonth(undefined)}>Schließen</Button>}
+    >
+      {selectedAudit ? <MonthlyAuditView audit={selectedAudit} /> : null}
+    </Modal>
   </div>;
+}
+
+function MonthlyAuditView({ audit }: { audit: MonthlyAudit }) {
+  return <div className="monthly-audit">
+    <div className="stat-grid compact">
+      <StatCard label="Erlöse netto" value={formatCurrency(audit.revenueNet)} tone="positive" />
+      <StatCard label="Ausgaben netto" value={formatCurrency(audit.expenseNet)} tone="negative" />
+      <StatCard label="Monatsergebnis" value={formatCurrency(audit.profitNet)} tone={audit.profitNet >= 0 ? "positive" : "negative"} />
+      <StatCard label="Kontrollstatus" value={auditStatusText(audit.status)} detail={audit.issueCount ? `${audit.issueCount} Hinweis(e)` : "Keine Auffälligkeit"} />
+    </div>
+
+    <div className="dashboard-columns lower">
+      <Card>
+        <div className="card-heading"><div><h2>Geschäftsaufteilung</h2><p>Woher Einnahmen und Ausgaben dieses Monats kommen.</p></div></div>
+        <div className="calculation-box">
+          <div><span>Geräteankäufe brutto</span><strong>{formatCurrency(audit.devicePurchaseGross)}</strong></div>
+          <div><span>Geräteverkäufe brutto</span><strong>{formatCurrency(audit.deviceSaleGross)}</strong></div>
+          <div><span>Reparaturerlöse brutto</span><strong>{formatCurrency(audit.repairIncomeGross)}</strong></div>
+          <div><span>Umbuchungen / Clearing</span><strong>{formatCurrency(audit.transferVolume)}</strong></div>
+          <div><span>USt</span><strong>{formatCurrency(audit.outputVat)}</strong></div>
+          <div><span>Vorsteuer</span><strong>{formatCurrency(audit.inputVat)}</strong></div>
+          <div className="calculation-total"><span>USt-Zahllast</span><strong>{formatCurrency(audit.vatLiability)}</strong></div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="card-heading"><div><h2>Zahlungswege</h2><p>Bruttovolumen der betrieblichen Buchungen.</p></div></div>
+        <div className="calculation-box">
+          <div><span>Bar</span><strong>{formatCurrency(audit.paymentTotals.cash)}</strong></div>
+          <div><span>Karte</span><strong>{formatCurrency(audit.paymentTotals.card)}</strong></div>
+          <div><span>Bank</span><strong>{formatCurrency(audit.paymentTotals.bank)}</strong></div>
+          <div><span>PayPal</span><strong>{formatCurrency(audit.paymentTotals.paypal)}</strong></div>
+        </div>
+      </Card>
+    </div>
+
+    <Card>
+      <div className="card-heading"><div><h2>Automatische Kontrolle</h2><p>Doppelbuchungen, ungeklärte Konten, Kassenprobleme, Belege und ungewöhnliche Beträge.</p></div><Badge tone={auditTone(audit.status)}>{auditLabel(audit)}</Badge></div>
+      {audit.issues.length ? <div className="monthly-audit-issues">
+        {audit.issues.map((issue) => <div key={issue.code} className={`monthly-audit-issue monthly-audit-${issue.severity}`}>
+          <Badge tone={issueTone(issue.severity)}>{issue.severity === "danger" ? "Prüfen" : issue.severity === "warning" ? "Hinweis" : "Info"}</Badge>
+          <div><strong>{issue.title}</strong><p>{issue.detail}</p></div>
+        </div>)}
+      </div> : <div className="alert alert-success">Für diesen Monat wurden keine Auffälligkeiten gefunden.</div>}
+    </Card>
+
+    <div className="dashboard-columns lower">
+      <Card>
+        <div className="card-heading"><div><h2>Ausgaben nach Konto / Kategorie</h2><p>Größte Kostenblöcke des Monats.</p></div></div>
+        {audit.expenseGroups.length ? <div className="compact-list">
+          {audit.expenseGroups.map((group) => <div key={group.label}><span><strong>{group.label}</strong><small>{group.count} Buchung(en)</small></span><strong>{formatCurrency(group.amount)}</strong></div>)}
+        </div> : <p className="muted">Keine betrieblichen Ausgaben in diesem Monat.</p>}
+      </Card>
+
+      <Card>
+        <div className="card-heading"><div><h2>Größte Einzel-Ausgaben</h2><p>Die fünf höchsten betrieblichen Ausgaben.</p></div></div>
+        {audit.topExpenses.length ? <div className="compact-list">
+          {audit.topExpenses.map((entry) => <div key={entry.id}><span><strong>{entry.description}</strong><small>{formatShortDate(entry.date)} · {entry.accountCode || "–"} · {entry.paymentMethod}</small></span><strong>{formatCurrency(entry.amount)}</strong></div>)}
+        </div> : <p className="muted">Keine betrieblichen Ausgaben in diesem Monat.</p>}
+      </Card>
+    </div>
+
+    <Card>
+      <div className="card-heading"><div><h2>Größte Einzel-Einnahmen</h2><p>Die fünf höchsten betrieblichen Einnahmen.</p></div></div>
+      {audit.topIncome.length ? <div className="compact-list">
+        {audit.topIncome.map((entry) => <div key={entry.id}><span><strong>{entry.description}</strong><small>{formatShortDate(entry.date)} · {entry.accountCode || "–"} · {entry.paymentMethod}</small></span><strong>{formatCurrency(entry.amount)}</strong></div>)}
+      </div> : <p className="muted">Keine betrieblichen Einnahmen in diesem Monat.</p>}
+    </Card>
+  </div>;
+}
+
+function auditTone(status: MonthlyAuditStatus): "neutral" | "success" | "warning" | "danger" | "info" {
+  if (status === "danger") return "danger";
+  if (status === "warning") return "warning";
+  if (status === "info") return "info";
+  if (status === "ok") return "success";
+  return "neutral";
+}
+
+function auditStatusText(status: MonthlyAuditStatus): string {
+  return ({ empty: "Keine Daten", ok: "Geprüft", info: "Hinweise", warning: "Prüfen", danger: "Kritisch" } as const)[status];
+}
+
+function auditLabel(audit: MonthlyAudit): string {
+  if (audit.status === "empty") return "Keine Daten";
+  if (audit.status === "ok") return "Geprüft";
+  return `${audit.issueCount} Hinweis(e)`;
+}
+
+function issueTone(severity: "info" | "warning" | "danger"): "info" | "warning" | "danger" {
+  return severity;
+}
+
+function monthLabel(month: string): string {
+  const [year, number] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(new Date(year, number - 1, 1));
+}
+
+function formatShortDate(value: string): string {
+  return new Intl.DateTimeFormat("de-DE").format(new Date(`${value}T12:00:00`));
 }
 
 function number(value: string, fallback = 0): number {

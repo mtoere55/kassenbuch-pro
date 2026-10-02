@@ -400,6 +400,27 @@ details summary { cursor: pointer; font-size: 12px; font-weight: 650; }
   .cid-server-sync small { max-width: 65vw; }
 }
 
+.monthly-audit-action { display: flex; align-items: center; gap: 7px; min-width: 145px; }
+.monthly-audit-action .button { min-height: 30px; padding: 0 10px; font-size: 11px; }
+.monthly-audit { display: grid; gap: 16px; }
+.monthly-audit .card { box-shadow: none; }
+.monthly-audit-issues { display: grid; gap: 9px; }
+.monthly-audit-issue {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: var(--surface-2);
+}
+.monthly-audit-issue strong { display: block; font-size: 12px; }
+.monthly-audit-issue p { margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.monthly-audit-danger { border-color: #f1caca; background: var(--red-soft); }
+.monthly-audit-warning { border-color: #efdcae; background: var(--amber-soft); }
+.monthly-audit-info { border-color: #cbdcfb; background: var(--blue-soft); }
+
 .finance-print-header,
 .finance-print-assumptions,
 .finance-print-footer { display: none; }
@@ -420,6 +441,7 @@ details summary { cursor: pointer; font-size: 12px; font-weight: 650; }
     -webkit-print-color-adjust: exact;
   }
   .finance-print-root .finance-screen-controls,
+  .finance-print-root .monthly-audit-action .button,
   .finance-print-root > .alert.alert-success { display: none !important; }
   .finance-print-header {
     display: flex !important;
