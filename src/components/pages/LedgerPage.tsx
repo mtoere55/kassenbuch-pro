@@ -158,7 +158,16 @@ export function LedgerPage() {
           {unresolvedCount ? <Button variant={unresolvedOnly ? "primary" : "secondary"} onClick={() => setUnresolvedOnly((value) => !value)}>{unresolvedOnly ? "Alle anzeigen" : `Nur ungeklart (${unresolvedCount})`}</Button> : null}
         </div>
         <div className="toolbar ledger-toolbar">
-          <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
+          <Select
+            value={month}
+            onChange={(event) => setMonth(event.target.value)}
+            aria-label="Monat auswählen"
+            title="Monat auswählen"
+          >
+            {buildMonthOptions(state.ledger, currentMonth).map((value) => (
+              <option key={value} value={value}>{monthLabel(value)}</option>
+            ))}
+          </Select>
           <div className="search-box">
             <Icon name="search" width={18} height={18} />
             <Input placeholder="Text, Konto oder Beleg" value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -298,6 +307,23 @@ function transferLabel(entry: LedgerEntry) {
 function monthLabel(month: string) {
   const [year, number] = month.split("-").map(Number);
   return new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(new Date(year, number - 1, 1));
+}
+
+function buildMonthOptions(ledger: LedgerEntry[], selectedMonth: string): string[] {
+  const years = ledger
+    .map((entry) => Number(entry.date.slice(0, 4)))
+    .filter((year) => Number.isInteger(year) && year >= 2000 && year <= 2100);
+  const selectedYear = Number(selectedMonth.slice(0, 4));
+  const currentYear = Number(currentMonth.slice(0, 4));
+  const minYear = Math.min(selectedYear, currentYear, ...(years.length ? years : [currentYear])) - 1;
+  const maxYear = Math.max(selectedYear, currentYear, ...(years.length ? years : [currentYear])) + 1;
+  const values: string[] = [];
+  for (let year = maxYear; year >= minYear; year -= 1) {
+    for (let month = 12; month >= 1; month -= 1) {
+      values.push(`${year}-${String(month).padStart(2, "0")}`);
+    }
+  }
+  return values;
 }
 
 function roundMoney(value: number) {
