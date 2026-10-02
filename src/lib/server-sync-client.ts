@@ -34,6 +34,40 @@ export class ServerRevisionConflictError extends Error {
   }
 }
 
+export interface LocalServerSyncMarker {
+  revision: number;
+  fingerprint: string;
+  syncedAt: string;
+}
+
+const SERVER_SYNC_MARKER_PREFIX = "kassenbuch-pro-server-sync-v1:";
+
+export function readLocalServerSyncMarker(cid: string): LocalServerSyncMarker | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = window.localStorage.getItem(`${SERVER_SYNC_MARKER_PREFIX}${cid}`);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as Partial<LocalServerSyncMarker>;
+    if (!Number.isInteger(parsed.revision) || !parsed.fingerprint || !parsed.syncedAt) return undefined;
+    return parsed as LocalServerSyncMarker;
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeLocalServerSyncMarker(cid: string, revision: number, state: AppState): void {
+  if (typeof window === "undefined") return;
+  const fingerprint = compactStateFingerprint(state);
+  window.localStorage.setItem(
+    `${SERVER_SYNC_MARKER_PREFIX}${cid}`,
+    JSON.stringify({ revision, fingerprint, syncedAt: new Date().toISOString() } satisfies LocalServerSyncMarker),
+  );
+}
+
+export function compactStateFingerprint(state: AppState): string {
+  return fingerprint(compactStateString(state));
+}
+
 export async function fetchRemoteState(): Promise<RemoteStateResult> {
   const response = await fetch("/api/kassenbuch/state", {
     method: "GET",
@@ -241,4 +275,18 @@ async function compressJson(value: string): Promise<{ bytes: BodyInit; encoding?
   const compressed = input.pipeThrough(new CompressionStream("gzip"));
   const bytes = await new Response(compressed).arrayBuffer();
   return { bytes, encoding: "gzip" };
+}
+
+
+function fingerprint(value: string): string {
+  let hashA = 2166136261;
+  let hashB = 0x9e3779b9;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    hashA ^= code;
+    hashA = Math.imul(hashA, 16777619);
+    hashB ^= code + ((hashB << 6) >>> 0) + (hashB >>> 2);
+    hashB >>>= 0;
+  }
+  return `${value.length.toString(36)}:${(hashA >>> 0).toString(36)}:${(hashB >>> 0).toString(36)}`;
 }
