@@ -91,11 +91,10 @@ export function preparePayPalBookkeeping(current: AppState): PayPalPostingResult
           category: `${account.code} · ${account.label}`,
           accountCode: account.code,
           reconciled: false,
-          note: addReviewNote(
-            [existingBySource.note, "Standardvorschlag für ausgehende PayPal-Zahlung: Reparaturmaterial; Beleg und Steuer prüfen"]
-              .filter(Boolean)
-              .join(" · "),
-          ),
+          note: [
+            existingBySource.note,
+            "Standardvorschlag für ausgehende PayPal-Zahlung: Reparaturmaterial; Beleg und Steuer prüfen",
+          ].filter(Boolean).join(" · "),
         };
         suggestedAccountCode = account.code;
       }
