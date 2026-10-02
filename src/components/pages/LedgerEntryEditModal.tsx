@@ -4,6 +4,7 @@ import { Fragment, useMemo, useRef, useState } from "react";
 import { BOOKING_CATEGORIES, getBookingCategory } from "@/lib/accounts";
 import { calculateDifferentialTax, formatCurrency, formatDate } from "@/lib/accounting";
 import { entryCashEffect, includedTax, parseMoney } from "@/lib/manual-booking";
+import { downloadBookingPdf } from "@/lib/direct-pdf";
 import { printHtmlElement } from "@/lib/print";
 import { useKassenStore } from "@/lib/store";
 import type { LedgerDirection, LedgerEntry, PaymentMethod, TaxMode } from "@/lib/types";
@@ -121,9 +122,35 @@ export function LedgerEntryEditModal({ entry, onClose, onSaved }: Props) {
   }
 
   function printCard() { printHtmlElement(printRef.current, "Buchung"); }
+
+  async function savePdf() {
+    try {
+      await downloadBookingPdf(state, {
+        date: draft.date,
+        direction: draft.direction,
+        paymentMethod: draft.paymentMethod,
+        bookingAccountCode: draft.bookingAccountCode,
+        bookingAccountLabel: bookingAccount?.label || accountLabelFromEntry(entry),
+        cashAccountTitle: cashAccountTitle(entry),
+        description: draft.description || entry.description,
+        amount,
+        taxRate: draft.taxRate,
+        taxAmount,
+        netAmount: roundMoney(amount - taxAmount),
+        cashChange,
+        documentNumber: draft.documentNumber || relatedDocument?.documentNumber,
+        note: draft.note || undefined,
+        taxMode: entry.taxMode,
+        device: relatedDevice,
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "PDF konnte nicht gespeichert werden.");
+    }
+  }
+
   const netAmount = roundMoney(amount - taxAmount);
 
-  return <Modal open={Boolean(entry)} title="Buchung bearbeiten" onClose={onClose} wide footer={<Fragment>{entry.documentId ? null : <Button variant="danger" onClick={deleteEntry}>Buchung löschen</Button>}<Button variant="secondary" icon="print" onClick={printCard}>Drucken</Button><Button variant="secondary" onClick={onClose}>Schließen</Button><Button onClick={save}>Änderung speichern</Button></Fragment>}>
+  return <Modal open={Boolean(entry)} title="Buchung bearbeiten" onClose={onClose} wide footer={<Fragment>{entry.documentId ? null : <Button variant="danger" onClick={deleteEntry}>Buchung löschen</Button>}<Button variant="secondary" icon="print" onClick={printCard}>Drucken</Button><Button variant="secondary" onClick={() => void savePdf()}>PDF speichern</Button><Button variant="secondary" onClick={onClose}>Schließen</Button><Button onClick={save}>Änderung speichern</Button></Fragment>}>
     <div className="screen-only">
       <div className="entry-card-head"><div><small>Buchen / Bearbeiten</small><strong>{formatDate(entry.date)}</strong></div><div><small>Konto</small><strong>{cashAccountTitle(entry)}</strong></div><div><small>Kassenwirkung</small><strong className={cashChange < 0 ? "money-negative" : "money-positive"}>{cashChange >= 0 ? "+" : "−"}{formatCurrency(Math.abs(cashChange))}</strong></div></div>
       {error ? <div className="alert alert-danger">{error}</div> : null}
