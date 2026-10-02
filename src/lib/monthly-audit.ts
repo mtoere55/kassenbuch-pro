@@ -1,4 +1,5 @@
 import { roundMoney } from "./accounting";
+import { isMisclassifiedBankStatementEntry } from "./document-control";
 import { financeNetValue, isOperatingFinanceEntry } from "./finance-tax";
 import { entryCashEffect } from "./manual-booking";
 import type { AppState, LedgerEntry, PaymentMethod } from "./types";
@@ -42,6 +43,8 @@ export interface MonthlyAudit {
   negativeCashDays: number;
   belowCostSales: number;
   unusualEntryCount: number;
+  misclassifiedBankStatementCount: number;
+  excludedBankStatementGross: number;
   topExpenses: LedgerEntry[];
   topIncome: LedgerEntry[];
   expenseGroups: MonthlyAuditGroup[];
@@ -58,7 +61,8 @@ export function buildMonthlyAudits(state: AppState, year: number): MonthlyAudit[
 
 export function buildMonthlyAudit(state: AppState, month: string): MonthlyAudit {
   const monthEntries = state.ledger.filter((entry) => entry.date.startsWith(month));
-  const operating = monthEntries.filter(isOperatingFinanceEntry);
+  const misclassifiedBankStatements = monthEntries.filter((entry) => isMisclassifiedBankStatementEntry(state, entry));
+  const operating = monthEntries.filter((entry) => isOperatingFinanceEntry(entry) && !isMisclassifiedBankStatementEntry(state, entry));
   const income = operating.filter((entry) => entry.direction === "income");
   const expenses = operating.filter((entry) => entry.direction === "expense");
 
@@ -103,6 +107,16 @@ export function buildMonthlyAudit(state: AppState, month: string): MonthlyAudit 
   const negativeCash = negativeCashDays(state, month);
 
   const issues: MonthlyAuditIssue[] = [];
+  if (misclassifiedBankStatements.length) {
+    const excluded = sum(misclassifiedBankStatements, (entry) => entry.amount);
+    issues.push({
+      code: "bank-statement-as-invoice",
+      severity: "danger",
+      title: `${misclassifiedBankStatements.length} Kontoauszug/Kontobeleg fälschlich als Eingangsrechnung erkannt`,
+      detail: `${money(excluded)} wird aus Ergebnis und Vorsteuer ausgeschlossen. Die ursprüngliche Scan-Buchung bitte im Kassenbuch löschen oder korrekt zuordnen.`,
+      entryIds: misclassifiedBankStatements.map((entry) => entry.id),
+    });
+  }
   if (unresolved.length) {
     issues.push({
       code: "unresolved",
@@ -243,6 +257,8 @@ export function buildMonthlyAudit(state: AppState, month: string): MonthlyAudit 
     negativeCashDays: negativeCash.length,
     belowCostSales: belowCostDevices.length,
     unusualEntryCount: unusualEntries.length,
+    misclassifiedBankStatementCount: misclassifiedBankStatements.length,
+    excludedBankStatementGross: roundMoney(sum(misclassifiedBankStatements, (entry) => entry.amount)),
     topExpenses: [...expenses].sort((a, b) => b.amount - a.amount).slice(0, 5),
     topIncome: [...income].sort((a, b) => b.amount - a.amount).slice(0, 5),
     expenseGroups: buildExpenseGroups(expenses),

@@ -1,4 +1,5 @@
 import { roundMoney } from "./accounting";
+import { isMisclassifiedBankStatementEntry } from "./document-control";
 import type { AppState, LedgerEntry } from "./types";
 
 export interface FinanceMonth {
@@ -56,7 +57,7 @@ export interface FinanceForecast {
 
 export function buildFinanceForecast(state: AppState, year: number, now = new Date()): FinanceForecast {
   const settings = state.settings;
-  const entries = state.ledger.filter((entry) => entry.date.startsWith(`${year}-`) && isOperatingFinanceEntry(entry));
+  const entries = state.ledger.filter((entry) => entry.date.startsWith(`${year}-`) && isOperatingFinanceEntry(entry) && !isMisclassifiedBankStatementEntry(state, entry));
   const months = Array.from({ length: 12 }, (_, index) => buildMonth(entries, year, index + 1));
   const activeMonths = months.filter((month) => month.bookingCount > 0).length;
   const totals = months.reduce(
