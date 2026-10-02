@@ -48,6 +48,46 @@ describe("PayPal bookkeeping", () => {
     expect(second.state.ledger).toHaveLength(first.state.ledger.length);
   });
 
+  it("repairs an existing unresolved outgoing PayPal row to account 3400 without claiming Vorsteuer", () => {
+    const tx = transaction("Unknown vendor");
+    const state = makeState([{
+      ...tx,
+      matchedLedgerEntryId: "paypal-old",
+      suggestedAccountCode: "0000",
+      bookkeepingStatus: "booked",
+      status: "needsReview",
+    }]);
+    state.ledger.push({
+      id: "paypal-old",
+      date: tx.date,
+      direction: "expense",
+      amount: 667.98,
+      paymentMethod: "paypal",
+      description: "PayPal-Ausgabe",
+      category: "0000 · Nicht zugeordnet",
+      source: "paypalImport",
+      sourceId: `paypal:${tx.id}`,
+      taxAmount: 0,
+      taxRate: 0,
+      taxMode: "taxFree",
+      reconciled: false,
+      accountCode: "0000",
+      counterAccountCode: "1370",
+      cashChange: 0,
+      netAmount: 667.98,
+      createdAt: tx.createdAt,
+    });
+
+    const result = preparePayPalBookkeeping(state);
+    const repaired = result.state.ledger.find((entry) => entry.id === "paypal-old");
+    expect(repaired).toMatchObject({
+      accountCode: "3400",
+      taxRate: 0,
+      taxAmount: 0,
+      reconciled: false,
+    });
+  });
+
   it("applies VAT only after the invoice has been reviewed", () => {
     const prepared = preparePayPalBookkeeping(makeState(parseTransactionsCsv(paypalCsv, "paypal")));
     const transaction = prepared.state.importedTransactions.find(
@@ -72,11 +112,12 @@ describe("PayPal bookkeeping", () => {
     ).toBe("reviewed");
   });
 
-  it("suggests accounts conservatively by known PayPal vendor", () => {
+  it("defaults outgoing PayPal purchases to repair materials but leaves unknown incoming payments open", () => {
     expect(suggestPayPalAccount(transaction("Google Ireland Limited"))).toBe("4610");
     expect(suggestPayPalAccount(transaction("softwarenetz.de"))).toBe("4980");
     expect(suggestPayPalAccount(transaction("eBay S.a.r.l."))).toBe("3400");
-    expect(suggestPayPalAccount(transaction("Unknown vendor"))).toBe("0000");
+    expect(suggestPayPalAccount(transaction("Unknown vendor"))).toBe("3400");
+    expect(suggestPayPalAccount({ ...transaction("Unknown incoming"), amount: 25 })).toBe("0000");
   });
 });
 

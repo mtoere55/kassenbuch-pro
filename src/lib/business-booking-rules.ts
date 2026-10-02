@@ -60,6 +60,12 @@ export function resolveConfiguredBankRule(text: string, amount: number): Configu
   if (includesAny(value, ["kontoführung", "kontofuehrung", "abrechnung", "bankentgelt"]) && amount < 0) {
     return rule("bank-fee", "Bankgebühren", "4970", "expense", "expense", "bankFee", false, false, 0, "1200", "Bankentgelte werden ohne Vorsteuer gebucht.");
   }
+  if (amount < 0 && value.includes("finanzamt")) {
+    return rule("tax-office", "Finanzamt / Steuerzahlung", "1780", "transfer", "transfer", "expense", true, false, 0, "1200", "Zahlungen an das Finanzamt werden nicht als laufender Betriebsaufwand behandelt. Die genaue Steuerart kann bei Bedarf separat geprüft werden.");
+  }
+  if (amount < 0 && includesAny(value, ["consultax", "steuerberatung", "steuerberater", "treuhand"])) {
+    return rule("tax-advisor", "Buchführung und Steuerberatung", "4955", "expense", "expense", "expense", false, true, 19, "1200", "Steuerberater- und Buchführungskosten; Vorsteuer erst nach Belegprüfung übernehmen.");
+  }
   if (amount < 0 && value.includes("gulbahar sun")) {
     return rule("family-payment", "Familienzahlung / privat", "1800", "transfer", "private", "privateWithdrawal", true, false, 0, "1200", "Zahlung an Gülbahar Sun wird als private Familienzahlung behandelt.");
   }
@@ -87,8 +93,8 @@ export function resolveConfiguredBankRule(text: string, amount: number): Configu
   if (amount > 0 && value.includes("prifoto")) {
     return rule("prifoto-commission", "Prifoto Eigenanteil / Provision", "8401", "income", "income", "income", false, true, 19, "1200", "Prifoto-Eigenanteil wird als Provision gebucht; Abrechnung zuordnen.");
   }
-  if (amount > 0 && includesAny(value, ["telefonica sagt danke", "ortel sagt danke", "dpd deutschland"])) {
-    return rule("partner-commission", "Partnerprovision", "8403", "income", "income", "income", false, true, 19, "1200", "Telefonica-, Ortel- oder DPD-Gutschrift wird als Provision gebucht; Gutschrift/Abrechnung zuordnen.");
+  if (amount > 0 && includesAny(value, ["telefonica", "ortel sagt danke", "dpd deutschland"])) {
+    return rule("partner-commission", "Partnerprovision", "8403", "income", "income", "income", false, true, 19, "1200", "Positive Telefonica-, Ortel- oder DPD-Zahlungen werden als Provision behandelt; Gutschrift/Abrechnung zuordnen.");
   }
   if (amount > 0 && value.includes("google ireland")) {
     return rule("google-adsense", "Google AdSense EU-Dienstleistung", "8338", "income", "income", "income", false, true, 0, "1200", "Google-AdSense-Ertrag als EU-Dienstleistung; Abrechnung für die umsatzsteuerliche Einordnung zuordnen.");

@@ -130,8 +130,9 @@ export function applyBookkeepingRulesSafely(current: AppState): AppState {
     ),
   };
   const builtInResult = applyConfiguredBusinessRules(builtInInput);
+  const payPalDefaultResult = applyDefaultPayPalMaterialRules(builtInResult);
   const builtInTransactions = new Map(
-    builtInResult.importedTransactions.map((transaction) => [transaction.id, transaction]),
+    payPalDefaultResult.importedTransactions.map((transaction) => [transaction.id, transaction]),
   );
   const importedTransactions = current.importedTransactions.map((transaction) =>
     learnedTransactions.get(transaction.id) ||
@@ -140,12 +141,12 @@ export function applyBookkeepingRulesSafely(current: AppState): AppState {
       : builtInTransactions.get(transaction.id) || transaction),
   );
   const nextState = {
-    ...builtInResult,
+    ...payPalDefaultResult,
     importedTransactions,
     bookingRules: getLearnedBookingRules(current),
   } as AppState;
 
-  if (!changed && builtInResult === builtInInput) return current;
+  if (!changed && payPalDefaultResult === builtInInput) return current;
   return sameState(original, nextState) ? original : nextState;
 }
 
@@ -209,6 +210,52 @@ function applyLearnedRule(
     bookkeepingStatus: rule.documentRequired ? "booked" : "reviewed",
   };
   return { entry: updatedEntry, transaction: updatedTransaction };
+}
+
+function applyDefaultPayPalMaterialRules(current: AppState): AppState {
+  const account = getBookingCategory("3400");
+  if (!account) return current;
+
+  const affectedIds = new Set<string>();
+  let changed = false;
+  const ledger = current.ledger.map((entry) => {
+    if (
+      entry.source !== "paypalImport" ||
+      entry.direction !== "expense" ||
+      entry.manualKind === "transfer" ||
+      entry.accountCode !== "0000"
+    ) {
+      return entry;
+    }
+    affectedIds.add(entry.id);
+    changed = true;
+    return {
+      ...entry,
+      category: `${account.code} · ${account.label}`,
+      accountCode: account.code,
+      taxRate: 0,
+      taxAmount: 0,
+      taxMode: "taxFree" as const,
+      netAmount: entry.amount,
+      reconciled: false,
+      note: appendNote(entry.note, "Standardvorschlag: PayPal-Ausgabe als Reparaturmaterial · Beleg und Vorsteuer prüfen"),
+    };
+  });
+
+  if (!changed) return current;
+
+  const importedTransactions = current.importedTransactions.map((transaction) =>
+    transaction.matchedLedgerEntryId && affectedIds.has(transaction.matchedLedgerEntryId)
+      ? {
+          ...transaction,
+          suggestedAccountCode: "3400",
+          status: "needsReview" as const,
+          bookkeepingStatus: "booked" as const,
+        }
+      : transaction,
+  );
+
+  return { ...current, ledger, importedTransactions };
 }
 
 function paymentAccount(method: PaymentMethod): string {

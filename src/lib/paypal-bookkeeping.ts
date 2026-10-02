@@ -63,21 +63,54 @@ export function preparePayPalBookkeeping(current: AppState): PayPalPostingResult
 
     if (matchedLedger) {
       const index = ledger.findIndex((entry) => entry.id === matchedLedger.id);
+      const applyMaterialDefault =
+        matchedLedger.accountCode === "0000" &&
+        transaction.amount < 0 &&
+        !isInternalTransfer(transaction);
+      const account = applyMaterialDefault ? getBookingCategory("3400")! : undefined;
       ledger[index] = {
         ...matchedLedger,
         paymentMethod: "paypal",
         counterAccountCode: "1370",
-        reconciled: true,
+        category: account ? `${account.code} · ${account.label}` : matchedLedger.category,
+        accountCode: account?.code || matchedLedger.accountCode,
+        reconciled: applyMaterialDefault ? false : true,
+        note: applyMaterialDefault
+          ? [matchedLedger.note, "Standardvorschlag für ausgehende PayPal-Zahlung: Reparaturmaterial; Beleg und Steuer prüfen"]
+              .filter(Boolean)
+              .join(" · ")
+          : matchedLedger.note,
       };
       linkedEntries += 1;
       return {
         ...transaction,
-        bookkeepingStatus: "reviewed" as const,
-        suggestedAccountCode: matchedLedger.accountCode,
+        bookkeepingStatus: applyMaterialDefault ? ("booked" as const) : ("reviewed" as const),
+        status: applyMaterialDefault ? ("needsReview" as const) : transaction.status,
+        suggestedAccountCode: account?.code || matchedLedger.accountCode,
       };
     }
 
     if (existingBySource) {
+      let suggestedAccountCode = existingBySource.accountCode;
+      if (
+        suggestedAccountCode === "0000" &&
+        transaction.amount < 0 &&
+        !isInternalTransfer(transaction)
+      ) {
+        const account = getBookingCategory("3400")!;
+        const index = ledger.findIndex((entry) => entry.id === existingBySource.id);
+        ledger[index] = {
+          ...existingBySource,
+          category: `${account.code} · ${account.label}`,
+          accountCode: account.code,
+          reconciled: false,
+          note: [
+            existingBySource.note,
+            "Standardvorschlag für ausgehende PayPal-Zahlung: Reparaturmaterial; Beleg und Steuer prüfen",
+          ].filter(Boolean).join(" · "),
+        };
+        suggestedAccountCode = account.code;
+      }
       skipped += 1;
       return {
         ...transaction,
@@ -85,7 +118,7 @@ export function preparePayPalBookkeeping(current: AppState): PayPalPostingResult
         bookkeepingStatus:
           transaction.bookkeepingStatus ||
           (isInternalTransfer(transaction) ? ("reviewed" as const) : ("booked" as const)),
-        suggestedAccountCode: existingBySource.accountCode,
+        suggestedAccountCode,
       };
     }
 
@@ -237,6 +270,7 @@ export function suggestPayPalAccount(transaction: ImportedTransaction): string {
   ) {
     return "3400";
   }
+  if (transaction.amount < 0) return "3400";
   return "0000";
 }
 
