@@ -8,12 +8,15 @@ import {
 import { ensureApril2026OpeningCash } from "@/lib/cash-opening-balance";
 import { repairHistoricalCashDeposits } from "@/lib/cash-deposit-repair";
 import {
+  compactStateFingerprint,
   compactStateString,
   fetchRemoteState,
   isMeaningfulState,
   pushRemoteState,
+  readLocalServerSyncMarker,
   ServerRevisionConflictError,
   syncAttachmentsWithServer,
+  writeLocalServerSyncMarker,
 } from "@/lib/server-sync-client";
 import { useKassenStore } from "@/lib/store";
 import type { AppState } from "@/lib/types";
@@ -50,25 +53,48 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
         const localAttachments = await loadAttachmentRecords();
         const localState = mergeStateWithBrowserAttachments(repaired, localAttachments);
         stateRef.current = localState;
+        if (active) replaceState(localState);
 
         setDetail("CID-Serverdaten werden geladen …");
         const remote = await fetchRemoteState();
 
         let canonical: AppState;
         if (remote.exists && remote.state && remote.revision) {
-          canonical = repairForCurrentRules(remote.state);
-          revision.current = remote.revision;
-          lastSyncedCompact.current = compactStateString(remote.state);
-          if (active) {
-            replaceState(mergeStateWithBrowserAttachments(canonical, localAttachments));
+          const remoteCanonical = repairForCurrentRules(remote.state);
+          const marker = readLocalServerSyncMarker(cid);
+          const localFingerprint = compactStateFingerprint(localState);
+          const remoteFingerprint = compactStateFingerprint(remoteCanonical);
+          const localHasData = isMeaningfulState(localState);
+
+          if (marker?.revision === remote.revision && marker.fingerprint !== localFingerprint) {
+            setDetail("Nicht übertragene lokale Änderungen werden zuerst auf dem CID-Server gesichert …");
+            const saved = await pushRemoteState(localState, remote.revision);
+            revision.current = saved.revision;
+            lastSyncedCompact.current = compactStateString(localState);
+            writeLocalServerSyncMarker(cid, saved.revision, localState);
+            canonical = localState;
+          } else if (marker && marker.revision < remote.revision && marker.fingerprint !== localFingerprint) {
+            throw new ServerRevisionConflictError(remote.revision);
+          } else if (marker && marker.revision > remote.revision) {
+            throw new ServerRevisionConflictError(remote.revision);
+          } else if (!marker && localHasData && localFingerprint !== remoteFingerprint) {
+            throw new ServerRevisionConflictError(remote.revision);
+          } else {
+            canonical = remoteCanonical;
+            revision.current = remote.revision;
+            lastSyncedCompact.current = compactStateString(remote.state);
+            writeLocalServerSyncMarker(cid, remote.revision, remoteCanonical);
+            if (active) {
+              replaceState(mergeStateWithBrowserAttachments(canonical, localAttachments));
+            }
           }
         } else if (isMeaningfulState(localState)) {
           setDetail("Dieser Browser überträgt den vorhandenen Datenbestand erstmals auf den CID-Server …");
           const saved = await pushRemoteState(localState, null);
           revision.current = saved.revision;
           lastSyncedCompact.current = compactStateString(localState);
+          writeLocalServerSyncMarker(cid, saved.revision, localState);
           canonical = localState;
-          if (active) replaceState(localState);
         } else {
           canonical = localState;
           revision.current = null;
@@ -91,9 +117,7 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
         });
 
         if (!active) return;
-        const latestCanonical = repairForCurrentRules(
-          remote.exists && remote.state ? remote.state : canonical,
-        );
+        const latestCanonical = repairForCurrentRules(canonical);
         const withAttachments = mergeStateWithBrowserAttachments(latestCanonical, syncedAttachments);
         stateRef.current = withAttachments;
         replaceState(withAttachments);
@@ -149,6 +173,7 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
         const saved = await pushRemoteState(nextState, revision.current);
         revision.current = saved.revision;
         lastSyncedCompact.current = compactStateString(nextState);
+        writeLocalServerSyncMarker(cid, saved.revision, nextState);
         if (revision.current) {
           setPhase("synced");
           setDetail(`CID-Server gespeichert · Revision ${revision.current}`);
