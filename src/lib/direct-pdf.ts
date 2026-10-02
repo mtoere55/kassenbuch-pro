@@ -52,7 +52,9 @@ async function downloadCanvasPdf(filename: string, draw: (ctx: CanvasRenderingCo
 
   const jpeg = await canvasToJpeg(canvas);
   const pdf = buildSinglePageJpegPdf(new Uint8Array(await jpeg.arrayBuffer()), PAGE_WIDTH, PAGE_HEIGHT);
-  const pdfCopy = new Uint8Array(pdf.byteLength);\n  pdfCopy.set(pdf);\n  const blob = new Blob([pdfCopy.buffer], { type: "application/pdf" });
+  const pdfCopy = new Uint8Array(pdf.byteLength);
+  pdfCopy.set(pdf);
+  const blob = new Blob([pdfCopy.buffer], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
