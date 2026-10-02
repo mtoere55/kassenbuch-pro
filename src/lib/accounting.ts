@@ -52,6 +52,19 @@ export function formatDate(value: string, locale = "de-DE"): string {
   return new Intl.DateTimeFormat(locale).format(new Date(`${value}T12:00:00`));
 }
 
+export function inventoryAgeDays(purchaseDate: string, referenceDate = todayIso()): number {
+  const start = parseIsoDayUtc(purchaseDate);
+  const end = parseIsoDayUtc(referenceDate);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return Math.max(0, Math.floor((end - start) / 86_400_000));
+}
+
+function parseIsoDayUtc(value: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return Number.NaN;
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
