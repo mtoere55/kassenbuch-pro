@@ -32,8 +32,8 @@ describe("initial CID server seed safety", () => {
       { id: "c1", customerNumber: "KD-1", type: "private", firstName: "A", lastName: "B", roles: ["customer"], createdAt: "2026-10-02T10:00:00.000Z" },
     ];
     state.importedTransactions = [
-      { id: "i1", date: "2026-10-01", amount: 10, direction: "in", description: "A", source: "bank", status: "new", createdAt: "2026-10-02T10:00:00.000Z" },
-      { id: "i2", date: "2026-10-02", amount: 20, direction: "in", description: "B", source: "bank", status: "new", createdAt: "2026-10-02T10:00:00.000Z" },
+      { id: "i1", accountType: "bank", date: "2026-10-01", amount: 10, description: "A", matchConfidence: 0, status: "new", createdAt: "2026-10-02T10:00:00.000Z" },
+      { id: "i2", accountType: "bank", date: "2026-10-02", amount: 20, description: "B", matchConfidence: 0, status: "new", createdAt: "2026-10-02T10:00:00.000Z" },
     ];
     expect(isMeaningfulState(state)).toBe(true);
   });
