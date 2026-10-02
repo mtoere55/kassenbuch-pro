@@ -6,7 +6,8 @@ import path from "node:path";
 import type { AppState } from "./types";
 
 const DEFAULT_DATA_DIR = "/opt/kassenbuch-pro/data";
-const MAX_HISTORY = 30;
+const MAX_HISTORY = 100;
+const stateWriteLocks = new Map<string, Promise<void>>();
 const MAX_STATE_BYTES = 12 * 1024 * 1024;
 const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 const MAX_CHUNK_BYTES = 600 * 1024;
@@ -95,38 +96,40 @@ export async function writeServerState(
   state: AppState,
   baseRevision: number | null,
 ): Promise<ServerStateSnapshot> {
-  if (!isAppState(state)) throw new Error("Ungültiger Kassenbuch-Datensatz.");
-  const serializedState = JSON.stringify(state);
-  if (Buffer.byteLength(serializedState, "utf8") > MAX_STATE_BYTES) {
-    throw new Error("Der kompakte Kassenbuch-Datensatz ist für die Serversynchronisierung zu groß.");
-  }
+  return withCidStateWriteLock(cid, async () => {
+    if (!isAppState(state)) throw new Error("Ungültiger Kassenbuch-Datensatz.");
+    const serializedState = JSON.stringify(state);
+    if (Buffer.byteLength(serializedState, "utf8") > MAX_STATE_BYTES) {
+      throw new Error("Der kompakte Kassenbuch-Datensatz ist für die Serversynchronisierung zu groß.");
+    }
 
-  await ensureServerStorageReady(cid);
-  const current = await readServerState(cid);
-  const currentRevision = current?.revision ?? null;
-  if (currentRevision !== baseRevision) {
-    const conflict = new Error("SERVER_REVISION_CONFLICT");
-    (conflict as Error & { currentRevision?: number | null }).currentRevision = currentRevision;
-    throw conflict;
-  }
+    await ensureServerStorageReady(cid);
+    const current = await readServerState(cid);
+    const currentRevision = current?.revision ?? null;
+    if (currentRevision !== baseRevision) {
+      const conflict = new Error("SERVER_REVISION_CONFLICT");
+      (conflict as Error & { currentRevision?: number | null }).currentRevision = currentRevision;
+      throw conflict;
+    }
 
-  if (current) {
-    const stamp = current.updatedAt.replace(/[:.]/g, "-");
-    await copyFile(statePath(cid), path.join(historyDir(cid), `state-r${current.revision}-${stamp}.json`));
-  }
+    if (current) {
+      const stamp = current.updatedAt.replace(/[:.]/g, "-");
+      await copyFile(statePath(cid), path.join(historyDir(cid), `state-r${current.revision}-${stamp}.json`));
+    }
 
-  const next: ServerStateSnapshot = {
-    cid,
-    revision: (current?.revision ?? 0) + 1,
-    updatedAt: new Date().toISOString(),
-    state,
-  };
-  const target = statePath(cid);
-  const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify(next), { encoding: "utf8", mode: 0o600 });
-  await rename(temporary, target);
-  await pruneHistory(cid);
-  return next;
+    const next: ServerStateSnapshot = {
+      cid,
+      revision: (current?.revision ?? 0) + 1,
+      updatedAt: new Date().toISOString(),
+      state,
+    };
+    const target = statePath(cid);
+    const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+    await writeFile(temporary, JSON.stringify(next), { encoding: "utf8", mode: 0o600 });
+    await rename(temporary, target);
+    await pruneHistory(cid);
+    return next;
+  });
 }
 
 export async function listStateHistory(cid: string): Promise<Array<{ name: string; revision: number; updatedAt: string; size: number }>> {
@@ -290,4 +293,23 @@ async function pruneHistory(cid: string): Promise<void> {
 
 function isNotFound(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "ENOENT");
+}
+
+
+async function withCidStateWriteLock<T>(cid: string, task: () => Promise<T>): Promise<T> {
+  const previous = stateWriteLocks.get(cid) || Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => gate);
+  stateWriteLocks.set(cid, queued);
+
+  await previous;
+  try {
+    return await task();
+  } finally {
+    release();
+    if (stateWriteLocks.get(cid) === queued) stateWriteLocks.delete(cid);
+  }
 }
