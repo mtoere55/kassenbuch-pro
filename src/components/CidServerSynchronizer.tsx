@@ -10,6 +10,7 @@ import { repairHistoricalCashDeposits } from "@/lib/cash-deposit-repair";
 import {
   compactStateFingerprint,
   compactStateString,
+  decideInitialServerSync,
   fetchRemoteState,
   isMeaningfulState,
   pushRemoteState,
@@ -49,7 +50,9 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
         setPhase("syncing");
         setDetail("Lokale CID-Daten werden vorbereitet …");
 
-        const repaired = repairForCurrentRules(stateRef.current);
+        const browserState = stateRef.current;
+        const browserFingerprint = compactStateFingerprint(browserState);
+        const repaired = repairForCurrentRules(browserState);
         const localAttachments = await loadAttachmentRecords();
         const localState = mergeStateWithBrowserAttachments(repaired, localAttachments);
         stateRef.current = localState;
@@ -65,21 +68,28 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
           const localFingerprint = compactStateFingerprint(localState);
           const remoteFingerprint = compactStateFingerprint(remoteCanonical);
           const localHasData = isMeaningfulState(localState);
+          const decision = decideInitialServerSync({
+            marker,
+            browserFingerprint,
+            localFingerprint,
+            remoteFingerprint,
+            remoteRevision: remote.revision,
+            localHasData,
+          });
 
-          if (marker?.revision === remote.revision && marker.fingerprint !== localFingerprint) {
+          if (decision === "push-local") {
             setDetail("Nicht übertragene lokale Änderungen werden zuerst auf dem CID-Server gesichert …");
             const saved = await pushRemoteState(localState, remote.revision);
             revision.current = saved.revision;
             lastSyncedCompact.current = compactStateString(localState);
             writeLocalServerSyncMarker(cid, saved.revision, localState);
             canonical = localState;
-          } else if (marker && marker.revision < remote.revision && marker.fingerprint !== localFingerprint) {
-            throw new ServerRevisionConflictError(remote.revision);
-          } else if (marker && marker.revision > remote.revision) {
-            throw new ServerRevisionConflictError(remote.revision);
-          } else if (!marker && localHasData && localFingerprint !== remoteFingerprint) {
+          } else if (decision === "conflict") {
             throw new ServerRevisionConflictError(remote.revision);
           } else {
+            if (marker && marker.revision < remote.revision) {
+              setDetail("Neuere CID-Serverdaten werden automatisch übernommen …");
+            }
             canonical = remoteCanonical;
             revision.current = remote.revision;
             lastSyncedCompact.current = compactStateString(remote.state);
@@ -128,9 +138,11 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
         blocked.current = cause instanceof ServerRevisionConflictError;
         setPhase(blocked.current ? "conflict" : "error");
         setDetail(
-          cause instanceof Error
-            ? cause.message
-            : "CID-Serversynchronisierung ist fehlgeschlagen. Lokale Daten bleiben erhalten.",
+          cause instanceof ServerRevisionConflictError
+            ? "Lokale, noch nicht synchronisierte Änderungen und neuere CID-Serverdaten sind gleichzeitig vorhanden. Es wird nichts überschrieben."
+            : cause instanceof Error
+              ? cause.message
+              : "CID-Serversynchronisierung ist fehlgeschlagen. Lokale Daten bleiben erhalten.",
         );
       }
     }
