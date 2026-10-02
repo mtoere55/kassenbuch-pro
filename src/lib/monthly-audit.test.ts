@@ -48,6 +48,45 @@ describe("monthly finance audit", () => {
     expect(audit.issues.some((issue) => issue.code === "negative-cash")).toBe(true);
   });
 
+  it("excludes a misclassified bank statement from monthly expenses and flags it clearly", () => {
+    const state = emptyState();
+    state.documents.push({
+      id: "doc-bank-statement",
+      documentNumber: "ER-2026-7777",
+      type: "supplierInvoice",
+      date: "2026-07-16",
+      amount: 20_426,
+      taxAmount: 3261.29,
+      taxMode: "standard19",
+      paymentMethod: "bank",
+      status: "paid",
+      ocrText: "Kontoauszug für 01 April 2026 bis 29 Mai 2026 IBAN DE123 Buchungstag Wertstellung Neuer Kontostand",
+      createdAt: "2026-07-16T12:00:00.000Z",
+    });
+    state.ledger.push(
+      entry("income", 1190, "8400", "2026-07-10", { taxAmount: 190, netAmount: 1000 }),
+      entry("expense", 595, "3400", "2026-07-11", { taxAmount: 95, netAmount: 500 }),
+      {
+        ...entry("expense", 20_426, "3400", "2026-07-16", {
+          taxAmount: 3261.29,
+          netAmount: 17_164.71,
+        }),
+        source: "scan",
+        documentId: "doc-bank-statement",
+        sourceId: "doc-bank-statement",
+        description: "Eingangsrechnung Kontoauszug für 01 April 2026 bis 29 Mai 2026",
+      },
+    );
+
+    const audit = buildMonthlyAudit(state, "2026-07");
+    expect(audit.expenseNet).toBe(500);
+    expect(audit.profitNet).toBe(500);
+    expect(audit.inputVat).toBe(95);
+    expect(audit.misclassifiedBankStatementCount).toBe(1);
+    expect(audit.excludedBankStatementGross).toBe(20_426);
+    expect(audit.issues.some((issue) => issue.code === "bank-statement-as-invoice")).toBe(true);
+  });
+
   it("flags a device sale below purchase plus repair cost", () => {
     const state = emptyState();
     state.devices.push({
