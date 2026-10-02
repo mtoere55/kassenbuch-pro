@@ -1,5 +1,3 @@
-import "server-only";
-
 import { createHash, randomUUID } from "node:crypto";
 import { access, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
