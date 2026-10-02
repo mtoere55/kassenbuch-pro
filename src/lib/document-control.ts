@@ -1,4 +1,4 @@
-import type { BusinessDocument } from "./types";
+import type { AppState, BusinessDocument, LedgerEntry } from "./types";
 
 export interface SupplierInvoiceFingerprintInput {
   vendor: string;
@@ -13,6 +13,76 @@ export interface BookkeepingAccount {
   label: string;
   defaultTaxRate: 0 | 7 | 19;
   keywords: string[];
+}
+
+export interface BankStatementEvidence {
+  isLikelyBankStatement: boolean;
+  score: number;
+  signals: string[];
+}
+
+export function detectBankStatementEvidence(text: string): BankStatementEvidence {
+  const normalized = text
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9€]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const weightedSignals: Array<[string, number, RegExp]> = [
+    ["Kontoauszug", 4, /\bkontoauszug\b/],
+    ["Buchungstag", 2, /\bbuchungstag\b/],
+    ["Wertstellung", 2, /\bwertstellung\b/],
+    ["Kontostand", 2, /\b(?:alter|neuer|aktueller)?\s*kontostand\b/],
+    ["Anfangs-/Endsaldo", 2, /\b(?:anfangssaldo|endsaldo|anfangsbestand|endbestand)\b/],
+    ["IBAN", 1, /\biban\b/],
+    ["BIC", 1, /\bbic\b/],
+    ["Bankumsatz", 2, /\b(?:umsatzanzeige|kontoumsatz|kontoumsaetze|konto umsaetze)\b/],
+    ["Soll/Haben", 1, /\b(?:soll|haben)\b/],
+  ];
+
+  const signals: string[] = [];
+  let score = 0;
+  for (const [label, weight, pattern] of weightedSignals) {
+    if (!pattern.test(normalized)) continue;
+    signals.push(label);
+    score += weight;
+  }
+
+  const invoiceSignals = [
+    /\brechnungsnummer\b/,
+    /\brechnungsdatum\b/,
+    /\bnettobetrag\b/,
+    /\bmehrwertsteuer\b/,
+    /\bgesamtbetrag\b/,
+  ].filter((pattern) => pattern.test(normalized)).length;
+
+  if (invoiceSignals >= 3 && !/\bkontoauszug\b/.test(normalized)) score = Math.max(0, score - 3);
+
+  const hasCoreBankSignal = /\bkontoauszug\b|\bbuchungstag\b|\bwertstellung\b|\b(?:alter|neuer|aktueller)?\s*kontostand\b/.test(normalized);
+  return {
+    isLikelyBankStatement: hasCoreBankSignal && score >= 4,
+    score,
+    signals,
+  };
+}
+
+export function isLikelyBankStatementText(text?: string | null): boolean {
+  return Boolean(text && detectBankStatementEvidence(text).isLikelyBankStatement);
+}
+
+export function isMisclassifiedBankStatementEntry(
+  state: Pick<AppState, "documents">,
+  entry: LedgerEntry,
+): boolean {
+  if (entry.source !== "scan" || !entry.documentId) return false;
+  const document = state.documents.find((item) => item.id === entry.documentId);
+  return Boolean(
+    document &&
+      document.type === "supplierInvoice" &&
+      isLikelyBankStatementText(document.ocrText),
+  );
 }
 
 export const SUPPLIER_BOOKKEEPING_ACCOUNTS: BookkeepingAccount[] = [
