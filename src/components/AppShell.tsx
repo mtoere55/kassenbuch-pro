@@ -42,11 +42,19 @@ export function AppShell({
 }) {
   const { state, hydrated } = useKassenStore();
   const [page, setPage] = useState<PageKey>("dashboard");
+  const [saleDeviceId, setSaleDeviceId] = useState<string>();
   const [mobileOpen, setMobileOpen] = useState(false);
   const language = state.settings.language;
 
   function navigate(next: PageKey) {
+    if (next === "sale") setSaleDeviceId(undefined);
     setPage(next);
+    setMobileOpen(false);
+  }
+
+  function sellDevice(deviceId: string) {
+    setSaleDeviceId(deviceId);
+    setPage("sale");
     setMobileOpen(false);
   }
 
@@ -68,16 +76,16 @@ export function AppShell({
       {mobileOpen ? <button className="sidebar-overlay" aria-label="Menü schließen" onClick={() => setMobileOpen(false)} /> : null}
       <main className="main-area">
         <div className="mobile-topbar"><button className="icon-button" onClick={() => setMobileOpen(true)}><Icon name="menu" width={22} height={22} /></button><strong>Kassenbuch Pro</strong><span /></div>
-        <div className="content">{renderPage(page, navigate)}</div>
+        <div className="content">{renderPage(page, navigate, sellDevice, saleDeviceId)}</div>
       </main>
     </div>
   );
 }
 
-function renderPage(page: PageKey, navigate: (page: PageKey) => void) {
+function renderPage(page: PageKey, navigate: (page: PageKey) => void, sellDevice: (deviceId: string) => void, saleDeviceId?: string) {
   switch (page) {
-    case "dashboard": return <DashboardPage onNavigate={navigate} />;
-    case "sale": return <SalePage />;
+    case "dashboard": return <DashboardPage onNavigate={navigate} onSellDevice={sellDevice} />;
+    case "sale": return <SalePage initialDeviceId={saleDeviceId} />;
     case "purchase": return <PurchasePage />;
     case "repair": return <RepairPage />;
     case "scan": return <ScannerPage />;
