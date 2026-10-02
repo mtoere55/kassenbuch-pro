@@ -239,6 +239,7 @@ function MonthlyAuditView({ audit }: { audit: MonthlyAudit }) {
           <div><span>Geräteverkäufe brutto</span><strong>{formatCurrency(audit.deviceSaleGross)}</strong></div>
           <div><span>Reparaturerlöse brutto</span><strong>{formatCurrency(audit.repairIncomeGross)}</strong></div>
           <div><span>Umbuchungen / Clearing</span><strong>{formatCurrency(audit.transferVolume)}</strong></div>
+          {audit.misclassifiedBankStatementCount ? <div><span>Kontoauszug-Fehlbuchung ausgeschlossen</span><strong>− {formatCurrency(audit.excludedBankStatementGross)}</strong></div> : null}
           <div><span>USt</span><strong>{formatCurrency(audit.outputVat)}</strong></div>
           <div><span>Vorsteuer</span><strong>{formatCurrency(audit.inputVat)}</strong></div>
           <div className="calculation-total"><span>USt-Zahllast</span><strong>{formatCurrency(audit.vatLiability)}</strong></div>
