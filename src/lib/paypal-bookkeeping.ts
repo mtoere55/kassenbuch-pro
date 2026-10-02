@@ -63,17 +63,30 @@ export function preparePayPalBookkeeping(current: AppState): PayPalPostingResult
 
     if (matchedLedger) {
       const index = ledger.findIndex((entry) => entry.id === matchedLedger.id);
+      const applyMaterialDefault =
+        matchedLedger.accountCode === "0000" &&
+        transaction.amount < 0 &&
+        !isInternalTransfer(transaction);
+      const account = applyMaterialDefault ? getBookingCategory("3400")! : undefined;
       ledger[index] = {
         ...matchedLedger,
         paymentMethod: "paypal",
         counterAccountCode: "1370",
-        reconciled: true,
+        category: account ? `${account.code} · ${account.label}` : matchedLedger.category,
+        accountCode: account?.code || matchedLedger.accountCode,
+        reconciled: applyMaterialDefault ? false : true,
+        note: applyMaterialDefault
+          ? [matchedLedger.note, "Standardvorschlag für ausgehende PayPal-Zahlung: Reparaturmaterial; Beleg und Steuer prüfen"]
+              .filter(Boolean)
+              .join(" · ")
+          : matchedLedger.note,
       };
       linkedEntries += 1;
       return {
         ...transaction,
-        bookkeepingStatus: "reviewed" as const,
-        suggestedAccountCode: matchedLedger.accountCode,
+        bookkeepingStatus: applyMaterialDefault ? ("booked" as const) : ("reviewed" as const),
+        status: applyMaterialDefault ? ("needsReview" as const) : transaction.status,
+        suggestedAccountCode: account?.code || matchedLedger.accountCode,
       };
     }
 
