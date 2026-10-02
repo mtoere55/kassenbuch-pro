@@ -36,6 +36,52 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
   const stateRef = useRef(state);
   const autosyncTimer = useRef<number | undefined>(undefined);
 
+  async function acceptServerState() {
+    const confirmed = window.confirm(
+      "Die aktuelle CID-Serverversion wird geladen. Noch nicht synchronisierte Änderungen in diesem Browser werden verworfen. Fortfahren?",
+    );
+    if (!confirmed) return;
+
+    try {
+      blocked.current = true;
+      ready.current = false;
+      setPhase("syncing");
+      setDetail("Aktuelle CID-Serverdaten werden übernommen …");
+
+      const remote = await fetchRemoteState();
+      if (!remote.exists || !remote.state || !remote.revision) {
+        throw new Error("Auf dem CID-Server wurde kein Datenbestand gefunden.");
+      }
+
+      const remoteCanonical = repairForCurrentRules(remote.state);
+      revision.current = remote.revision;
+      lastSyncedCompact.current = compactStateString(remoteCanonical);
+      writeLocalServerSyncMarker(cid, remote.revision, remoteCanonical);
+
+      setDetail("Dokumentdateien werden mit dem CID-Server abgeglichen …");
+      const syncedAttachments = await syncAttachmentsWithServer(cid, (done, total) => {
+        if (total > 0) setDetail(`Dokumentdateien werden synchronisiert: ${done}/${total}`);
+      });
+      const nextState = mergeStateWithBrowserAttachments(remoteCanonical, syncedAttachments);
+
+      stateRef.current = nextState;
+      replaceState(nextState);
+      blocked.current = false;
+      ready.current = true;
+      setPhase("synced");
+      setDetail(`CID-Server aktiv · Revision ${remote.revision}`);
+    } catch (cause) {
+      blocked.current = true;
+      ready.current = false;
+      setPhase("error");
+      setDetail(
+        cause instanceof Error
+          ? `${cause.message} Lokale Daten wurden nicht überschrieben.`
+          : "CID-Serverdaten konnten nicht übernommen werden. Lokale Daten wurden nicht überschrieben.",
+      );
+    }
+  }
+
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -227,7 +273,7 @@ export function CidServerSynchronizer({ cid }: { cid: string }) {
         <small>{detail}</small>
       </div>
       {phase === "conflict" ? (
-        <button type="button" onClick={() => window.location.reload()}>Neu laden</button>
+        <button type="button" onClick={() => void acceptServerState()}>Serverdaten übernehmen</button>
       ) : null}
     </div>
   );
