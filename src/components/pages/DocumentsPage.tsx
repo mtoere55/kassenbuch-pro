@@ -8,6 +8,7 @@ import {
   supplierInvoiceKeyFromDocument,
 } from "@/lib/document-control";
 import { parseDecimal, validateSupplierInvoiceAmounts } from "@/lib/invoice-validation";
+import { downloadBusinessDocumentPdf } from "@/lib/direct-pdf";
 import { useKassenStore } from "@/lib/store";
 import type { BusinessDocument, DocumentType } from "@/lib/types";
 import { DocumentView, printDocumentView } from "../DocumentView";
@@ -414,6 +415,7 @@ export function DocumentsPage() {
                 </Button>
               ) : null}
               <Button variant="secondary" onClick={closeDocument}>Schließen</Button>
+              {selected && selected.type !== "zReport" && selected.type !== "supplierInvoice" ? <Button variant="secondary" onClick={() => void downloadBusinessDocumentPdf(state, selected)}>PDF speichern</Button> : null}
               <Button icon="print" onClick={printDocumentView}>Drucken</Button>
             </>
           )
